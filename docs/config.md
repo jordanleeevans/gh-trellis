@@ -39,7 +39,8 @@ override is removed from any other action's defaults.
 
 Actions: `move_down`, `move_up`, `focus_next`, `focus_previous`, `drill_in`,
 `back` (alias `quit`), `refresh`, `checkout`, `add_layer`, `unstack`, `unstack_remote`, `toggle_diff`,
-`submit`, `toggle_submit_auto`, `toggle_submit_open`, `help`, `page_down`,
+`submit`, `toggle_submit_auto`, `toggle_submit_open`, `sync` (default `S`),
+`toggle_sync_prune` (default `P`), `help`, `page_down`,
 `page_up`, `half_page_down`, `half_page_up`, `end`, `open_external`,
 `dismiss_message`.
 

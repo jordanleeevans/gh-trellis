@@ -5,7 +5,7 @@
 //! [`super::effects`] turns the ones that need a process into background
 //! tasks whose results come back as further `Action`s.
 
-use crate::stack::{LayerDetail, StackSummary, UnstackScope};
+use crate::stack::{LayerDetail, StackSummary, SyncOutcome, UnstackScope};
 
 use super::components::confirm::ConfirmModal;
 use super::state::submit_progress::LayerSubmitStatus;
@@ -116,4 +116,18 @@ pub enum Action {
         stack_index: usize,
     },
     DismissSubmit,
+    /// The user's intent to sync a stack; shows the confirmation modal.
+    SyncStack {
+        stack_index: usize,
+    },
+    ToggleSyncPrune,
+    /// Sync was confirmed: starts `gh stack sync` in the background.
+    SyncStarted {
+        stack_index: usize,
+    },
+    SyncFinished {
+        /// The error is already user-facing (see `friendly_shell_error`).
+        result: Result<SyncOutcome, String>,
+    },
+    DismissSyncNotice,
 }

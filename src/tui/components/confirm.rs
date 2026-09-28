@@ -144,7 +144,15 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 pub(crate) fn render(frame: &mut Frame, area: Rect, modal: &ConfirmModal) {
     let width = area.width.saturating_sub(4).clamp(24, 64);
     let extra_lines = if modal.danger { 3 } else { 0 };
-    let height = (6 + extra_lines).min(area.height.saturating_sub(2)).max(6);
+    let inner_width = usize::from(width.saturating_sub(2)).max(1);
+    let body_rows: usize = modal
+        .body
+        .lines()
+        .map(|line| line.chars().count().div_ceil(inner_width).max(1))
+        .sum::<usize>()
+        .max(1);
+    let wanted = u16::try_from(5 + body_rows + extra_lines).unwrap_or(u16::MAX);
+    let height = wanted.min(area.height.saturating_sub(2)).max(6);
     let modal_area = centered_rect(width, height, area);
 
     frame.render_widget(Clear, modal_area);
@@ -177,10 +185,12 @@ pub(crate) fn render(frame: &mut Frame, area: Rect, modal: &ConfirmModal) {
     let inner = block.inner(modal_area);
     frame.render_widget(block, modal_area);
 
-    let mut lines = vec![
-        Line::from(Span::styled(modal.body.clone(), THEME.text.body)),
-        Line::from(""),
-    ];
+    let mut lines: Vec<Line> = modal
+        .body
+        .lines()
+        .map(|line| Line::from(Span::styled(line.to_string(), THEME.text.body)))
+        .collect();
+    lines.push(Line::from(""));
 
     if modal.danger {
         lines.push(Line::from(Span::styled(
