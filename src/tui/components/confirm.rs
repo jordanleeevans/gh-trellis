@@ -22,7 +22,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use crate::theme::ui::THEME;
 
-use super::app::Action;
+use crate::tui::action::Action;
 
 /// The phrase a user must type (case-insensitively) to accept a `danger`
 /// modal. Kept fixed and simple ("yes") rather than per-action so the
@@ -158,7 +158,7 @@ pub(crate) fn render(frame: &mut Frame, area: Rect, modal: &ConfirmModal) {
     let title_text = if modal.danger {
         format!(
             " {} {} ",
-            crate::theme::glyphs::current().warning,
+            crate::tui::widgets::glyphs().warning,
             modal.title
         )
     } else {

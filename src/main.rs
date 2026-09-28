@@ -41,5 +41,5 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    tui::run(&shell, cwd.as_path()).await
+    tui::run(std::sync::Arc::new(shell), cwd.as_path()).await
 }

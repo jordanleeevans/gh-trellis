@@ -1,4 +1,5 @@
 use crate::stack::{Layer, StackSummary};
+use crate::tui::state::{AppState, Screen};
 
 pub fn layer(name: &str) -> Layer {
     Layer {
@@ -23,5 +24,13 @@ pub fn stack_summary(label: &str, layer_count: usize) -> StackSummary {
             .map(|index| layer(&format!("{label}-layer-{index}")))
             .collect(),
         is_current: false,
+    }
+}
+
+pub fn app_state(stacks: Vec<StackSummary>, screen: Screen) -> AppState {
+    AppState {
+        stacks,
+        screen,
+        ..AppState::default()
     }
 }
