@@ -1303,6 +1303,7 @@ mod tests {
             last_successful_stacks: Vec::new(),
             layer_details: LayerResourceCache::default(),
             layer_diffs: LayerResourceCache::default(),
+            confirm: None,
             should_quit: false,
         }
     }
