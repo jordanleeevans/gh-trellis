@@ -152,6 +152,38 @@ impl Keymap {
         Ok(self)
     }
 
+    /// Every key bound to `intent`, in table order.
+    pub(crate) fn bindings_for(&self, intent: KeyIntent) -> Vec<KeyBinding> {
+        self.entries
+            .iter()
+            .filter(|(_, i)| *i == intent)
+            .map(|(b, _)| *b)
+            .collect()
+    }
+
+    /// The shortest key label for `intent` (e.g. `j` rather than `down`),
+    /// for compact hints; `None` if the intent is unbound.
+    pub(crate) fn short_label(&self, intent: KeyIntent) -> Option<String> {
+        self.bindings_for(intent)
+            .iter()
+            .map(ToString::to_string)
+            .min_by_key(|label| label.chars().count())
+    }
+
+    /// Every key label for `intent`, joined with `/`, or `unbound`.
+    pub(crate) fn all_labels(&self, intent: KeyIntent) -> String {
+        let labels: Vec<String> = self
+            .bindings_for(intent)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        if labels.is_empty() {
+            "unbound".to_string()
+        } else {
+            labels.join("/")
+        }
+    }
+
     /// Most specific (most modifiers) matching binding wins; ties go to table order.
     pub(crate) fn lookup(&self, key: KeyEvent) -> Option<KeyIntent> {
         self.entries
@@ -170,8 +202,13 @@ pub(crate) fn install(keymap: Keymap) {
     let _ = KEYMAP.set(keymap);
 }
 
+/// The process-wide keymap: config overrides if installed, else defaults.
+pub(crate) fn current() -> &'static Keymap {
+    KEYMAP.get_or_init(Keymap::default_keymap)
+}
+
 pub(crate) fn key_intent(key: KeyEvent) -> Option<KeyIntent> {
-    KEYMAP.get_or_init(Keymap::default_keymap).lookup(key)
+    current().lookup(key)
 }
 
 #[cfg(test)]
@@ -272,6 +309,25 @@ mod tests {
             map.lookup(key(KeyCode::Char('j'))),
             Some(KeyIntent::MoveDown)
         );
+    }
+
+    #[test]
+    fn labels_follow_overrides() {
+        let defaults = Keymap::default_keymap();
+        assert_eq!(
+            defaults.short_label(KeyIntent::MoveDown).as_deref(),
+            Some("j")
+        );
+        assert_eq!(defaults.all_labels(KeyIntent::MoveDown), "down/j");
+
+        let mut o = BTreeMap::new();
+        o.insert(
+            "move_down".to_string(),
+            vec![KeyBinding::new(KeyCode::Char('n'), KeyModifiers::NONE)],
+        );
+        let map = Keymap::default_keymap().with_overrides(&o).unwrap();
+        assert_eq!(map.short_label(KeyIntent::MoveDown).as_deref(), Some("n"));
+        assert_eq!(map.all_labels(KeyIntent::MoveDown), "n");
     }
 
     #[test]

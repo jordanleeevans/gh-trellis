@@ -19,7 +19,8 @@ use crate::theme::ui::THEME;
 use crate::tui::action::Action;
 use crate::tui::component::Component;
 use crate::tui::components::add_layer_prompt::{self, AddLayerPrompt};
-use crate::tui::components::submit_progress;
+use crate::tui::components::{help, submit_progress};
+use crate::tui::keymap;
 use crate::tui::state::AppState;
 use crate::tui::widgets::panel_block;
 
@@ -56,6 +57,9 @@ pub struct StackBrowser {
     diff_scroll: u16,
     active_layer_key: Option<String>,
     add_layer_prompt: Option<AddLayerPrompt>,
+    /// Whether the `?` keybinding overlay is open.
+    show_help: bool,
+    help_scroll: u16,
 }
 
 impl StackBrowser {
@@ -71,6 +75,8 @@ impl StackBrowser {
             diff_scroll: 0,
             active_layer_key: None,
             add_layer_prompt: None,
+            show_help: false,
+            help_scroll: 0,
         }
     }
 
@@ -111,7 +117,7 @@ fn render(
         selected_stack,
         view,
     );
-    render_footer(frame, footer_area, state);
+    render_footer(frame, footer_area, state, view.active_panel);
 
     if let Some(progress) = &state.submit_progress {
         submit_progress::render(frame, content_area, progress);
@@ -188,6 +194,17 @@ impl Component for StackBrowser {
 
         if let Some(prompt) = &self.add_layer_prompt {
             add_layer_prompt::render(frame, frame.area(), prompt);
+        }
+
+        if self.show_help {
+            let max_scroll = help::render(
+                frame,
+                frame.area(),
+                keymap::current(),
+                state,
+                self.help_scroll,
+            );
+            self.help_scroll = self.help_scroll.min(max_scroll);
         }
     }
 

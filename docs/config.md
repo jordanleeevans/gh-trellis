@@ -37,6 +37,10 @@ All fields are optional; unknown fields are rejected.
 Overriding an action replaces all of its default keys. A key claimed by an
 override is removed from any other action's defaults.
 
+Press `?` in the app to see every binding currently in effect, including
+your overrides. The footer shows the most useful keys for the focused panel,
+also using your bindings.
+
 Actions: `move_down`, `move_up`, `focus_next`, `focus_previous`, `drill_in`,
 `back` (alias `quit`), `refresh`, `checkout`, `add_layer`, `unstack`, `unstack_remote`, `toggle_diff`,
 `submit`, `toggle_submit_auto`, `toggle_submit_open`, `sync` (default `S`),

@@ -17,6 +17,19 @@ impl StackBrowser {
             return self.handle_add_layer_prompt_key(key);
         }
 
+        if self.show_help {
+            match key_intent(key) {
+                Some(KeyIntent::Help | KeyIntent::Back | KeyIntent::DismissMessage) => {
+                    self.show_help = false;
+                    self.help_scroll = 0;
+                }
+                Some(KeyIntent::MoveDown) => self.help_scroll = self.help_scroll.saturating_add(1),
+                Some(KeyIntent::MoveUp) => self.help_scroll = self.help_scroll.saturating_sub(1),
+                _ => {}
+            }
+            return Vec::new();
+        }
+
         if state.submit_progress.is_some() {
             return match key_intent(key) {
                 Some(KeyIntent::Back) | Some(KeyIntent::DismissMessage) => {
@@ -128,6 +141,10 @@ impl StackBrowser {
                     }]
                 })
                 .unwrap_or_default(),
+            Some(KeyIntent::Help) => {
+                self.show_help = true;
+                Vec::new()
+            }
             Some(KeyIntent::ToggleDiff) => vec![Action::ToggleDiffView],
             Some(KeyIntent::Submit) => selected_stack
                 .map(|stack_index| vec![Action::SubmitStack { stack_index }])
@@ -564,6 +581,35 @@ mod tests {
 
         let prune = component.handle_key(key(KeyCode::Char('P')), &state);
         assert!(matches!(prune.as_slice(), [Action::ToggleSyncPrune]));
+    }
+
+    #[test]
+    fn question_mark_opens_help_and_q_closes_it_without_quitting() {
+        let mut component = StackBrowser::new();
+        let mut state = app_state(vec![stack_summary("a", 2)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+
+        assert!(
+            component
+                .handle_key(key(KeyCode::Char('?')), &state)
+                .is_empty()
+        );
+        assert!(component.show_help);
+
+        // Other keys are swallowed while help is open.
+        assert!(
+            component
+                .handle_key(key(KeyCode::Char('s')), &state)
+                .is_empty()
+        );
+        assert!(component.show_help);
+
+        assert!(
+            component
+                .handle_key(key(KeyCode::Char('q')), &state)
+                .is_empty()
+        );
+        assert!(!component.show_help);
     }
 
     #[test]
