@@ -11,6 +11,7 @@ use crate::shell::{ProcessShell, Shell, ShellError};
 use crate::stack::hydrate_layer_detail;
 use crate::stack::{Layer, LayerDetail, StackSummary, list_stacks};
 
+use super::confirm::{self, ConfirmModal};
 use super::keymap::{KeyIntent, key_intent};
 use super::layer_resource::LayerResourceCache;
 use super::stack_layers;
@@ -82,6 +83,21 @@ pub enum Action {
     SetError(String),
     ClearError,
     ClearStatus,
+    /// Shows a confirmation modal (see [`crate::tui::confirm::ConfirmModal`]),
+    /// replacing any modal already shown.
+    ShowConfirm(ConfirmModal),
+    /// Accepts the currently shown confirm modal, dispatching its attached
+    /// action if [`ConfirmModal::can_confirm`] allows it, or leaving it open
+    /// (waiting for the danger phrase to be completed) otherwise.
+    ConfirmAccept,
+    /// Dismisses the currently shown confirm modal without dispatching its
+    /// attached action.
+    ConfirmCancel,
+    /// Appends a typed character to a `danger` confirm modal's input.
+    ConfirmInput(char),
+    /// Removes the last typed character from a `danger` confirm modal's
+    /// input.
+    ConfirmBackspace,
 }
 
 pub trait Component {
@@ -102,6 +118,11 @@ pub struct AppState {
     pub last_successful_stacks: Vec<StackSummary>,
     pub layer_details: LayerResourceCache<LayerDetail>,
     pub layer_diffs: LayerResourceCache<String>,
+    /// The confirmation modal currently shown on top of whatever screen is
+    /// active, if any. Any destructive (or otherwise confirmation-worthy)
+    /// action shows one via `Action::ShowConfirm` rather than rolling its
+    /// own one-off modal.
+    pub confirm: Option<ConfirmModal>,
     pub(crate) should_quit: bool,
 }
 
@@ -124,6 +145,7 @@ impl AppState {
             last_successful_stacks: Vec::new(),
             layer_details: LayerResourceCache::default(),
             layer_diffs: LayerResourceCache::default(),
+            confirm: None,
             should_quit: false,
         }
     }
@@ -172,10 +194,28 @@ impl App {
 
     fn draw(&mut self, frame: &mut Frame) {
         self.stack_layers.draw(frame, &self.state);
+
+        if let Some(modal) = &self.state.confirm {
+            confirm::render(frame, frame.area(), modal);
+        }
     }
 
+    /// Turns a raw key event into `Action`s. A confirm modal, when shown,
+    /// gets first refusal on every key: input is routed to it instead of
+    /// falling through to the active screen's own key handling, exactly the
+    /// way `stack_layers` already intercepts keys internally based on its
+    /// own state (e.g. its pending-`g` handling).
     fn handle_key(&mut self, key: KeyEvent) -> Vec<Action> {
-        let mut actions = self.stack_layers.handle_key(key, &self.state);
+        if let Some(modal) = &self.state.confirm {
+            return confirm::handle_confirm_key(modal, key);
+        }
+
+        let mut actions: Vec<Action> = self
+            .stack_layers
+            .handle_key(key, &self.state)
+            .into_iter()
+            .map(wrap_quit_in_confirmation)
+            .collect();
 
         if self.state.error.is_some() && key_intent(key) == Some(KeyIntent::DismissMessage) {
             actions.push(Action::ClearError);
@@ -552,6 +592,38 @@ impl App {
                 self.state.error = None;
                 Vec::new()
             }
+            Action::ShowConfirm(modal) => {
+                self.state.confirm = Some(modal.clone());
+                Vec::new()
+            }
+            Action::ConfirmCancel => {
+                self.state.confirm = None;
+                Vec::new()
+            }
+            Action::ConfirmAccept => match self.state.confirm.take() {
+                Some(modal) if modal.can_confirm() => {
+                    modal.into_confirmed_action().into_iter().collect()
+                }
+                Some(modal) => {
+                    // Danger modal, phrase not typed correctly yet: keep it
+                    // open rather than firing or dismissing it.
+                    self.state.confirm = Some(modal);
+                    Vec::new()
+                }
+                None => Vec::new(),
+            },
+            Action::ConfirmInput(c) => {
+                if let Some(modal) = self.state.confirm.as_mut() {
+                    modal.push_char(*c);
+                }
+                Vec::new()
+            }
+            Action::ConfirmBackspace => {
+                if let Some(modal) = self.state.confirm.as_mut() {
+                    modal.pop_char();
+                }
+                Vec::new()
+            }
             Action::SelectNext
             | Action::SelectPrevious
             | Action::FocusNextPanel
@@ -568,6 +640,30 @@ impl App {
             | Action::ScrollDiffBottom
             | Action::ToggleDiffView => Vec::new(),
         }
+    }
+}
+
+/// Wraps a raw `Action::Quit` (as produced by the active screen's own key
+/// handling, e.g. `q`/Esc in `stack_layers`) in a non-danger confirm modal
+/// instead of letting it fire immediately, so accidentally hitting `q`
+/// doesn't kill the whole TUI. This is the framework's one real, wired-up
+/// demonstration: `Action::Quit` itself is untouched and still performs the
+/// actual quit once the modal is confirmed, since this rewrite only happens
+/// at the key-handling boundary, not inside `apply_action`'s reducer, so
+/// replaying `Action::Quit` from the modal's `on_confirm` cannot loop back
+/// into another confirmation.
+fn wrap_quit_in_confirmation(action: Action) -> Action {
+    match action {
+        Action::Quit => Action::ShowConfirm(
+            ConfirmModal::new(
+                "Quit trellis?",
+                "Any in-flight background refresh will be cancelled.",
+                "Quit",
+                false,
+            )
+            .on_confirm(Action::Quit),
+        ),
+        other => other,
     }
 }
 
@@ -737,6 +833,11 @@ mod tests {
     use super::*;
     use crate::shell::MockShell;
     use crate::test_fixtures::{layer, stack_summary};
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
 
     #[test]
     fn layer_detail_cache_key_includes_stack_and_branch() {
@@ -1049,5 +1150,159 @@ mod tests {
         app.apply_action(&Action::Tick, &shell, repo.as_path())
             .await;
         assert_eq!(app.state.refresh_spinner_frame, 1);
+    }
+
+    // --- Confirm modal framework: end-to-end via the real key-handling and
+    // apply_action code paths, not a hand-rolled bypass of them. `Quit` is
+    // the one real call site wired up today (see `wrap_quit_in_confirmation`
+    // doc comment for why); the `danger` flow below is exercised directly
+    // against a modal built the same way a future sync/rebase/merge/
+    // restructure/unstack call site would build one, since none of those
+    // actions exist yet.
+
+    #[tokio::test]
+    async fn quit_key_shows_confirmation_instead_of_quitting_immediately() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+
+        let actions = app.handle_key(key(KeyCode::Char('q')));
+        assert!(matches!(actions.as_slice(), [Action::ShowConfirm(_)]));
+
+        app.dispatch_actions_with_loader(actions, &shell, repo.as_path(), None)
+            .await;
+
+        let modal = app.state.confirm.as_ref().expect("modal should be shown");
+        assert!(!modal.danger);
+        assert!(!app.state.should_quit);
+    }
+
+    #[tokio::test]
+    async fn confirming_quit_modal_actually_quits() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+
+        let show = app.handle_key(key(KeyCode::Char('q')));
+        app.dispatch_actions_with_loader(show, &shell, repo.as_path(), None)
+            .await;
+        assert!(app.state.confirm.is_some());
+        assert!(!app.state.should_quit);
+
+        let accept = app.handle_key(key(KeyCode::Enter));
+        assert!(matches!(accept.as_slice(), [Action::ConfirmAccept]));
+        app.dispatch_actions_with_loader(accept, &shell, repo.as_path(), None)
+            .await;
+
+        assert!(app.state.should_quit);
+        assert!(app.state.confirm.is_none());
+    }
+
+    #[tokio::test]
+    async fn cancelling_quit_modal_leaves_app_running() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+
+        let show = app.handle_key(key(KeyCode::Char('q')));
+        app.dispatch_actions_with_loader(show, &shell, repo.as_path(), None)
+            .await;
+
+        let cancel = app.handle_key(key(KeyCode::Esc));
+        assert!(matches!(cancel.as_slice(), [Action::ConfirmCancel]));
+        app.dispatch_actions_with_loader(cancel, &shell, repo.as_path(), None)
+            .await;
+
+        assert!(app.state.confirm.is_none());
+        assert!(!app.state.should_quit);
+    }
+
+    #[tokio::test]
+    async fn danger_modal_requires_typed_phrase_before_enter_fires_action() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+
+        app.state.confirm = Some(
+            ConfirmModal::new(
+                "Merge PR?",
+                "This merges the stack into main.",
+                "Merge",
+                true,
+            )
+            .on_confirm(Action::ClearStatus),
+        );
+
+        // Enter does nothing yet: no phrase has been typed at all.
+        let premature = app.handle_key(key(KeyCode::Enter));
+        app.dispatch_actions_with_loader(premature, &shell, repo.as_path(), None)
+            .await;
+        assert!(app.state.confirm.is_some());
+
+        // Typing the wrong phrase also keeps it open.
+        for c in "no".chars() {
+            let typed = app.handle_key(key(KeyCode::Char(c)));
+            app.dispatch_actions_with_loader(typed, &shell, repo.as_path(), None)
+                .await;
+        }
+        let premature = app.handle_key(key(KeyCode::Enter));
+        app.dispatch_actions_with_loader(premature, &shell, repo.as_path(), None)
+            .await;
+        assert!(app.state.confirm.is_some());
+
+        for _ in 0.."no".len() {
+            let backspace = app.handle_key(key(KeyCode::Backspace));
+            app.dispatch_actions_with_loader(backspace, &shell, repo.as_path(), None)
+                .await;
+        }
+
+        for c in "yes".chars() {
+            let typed = app.handle_key(key(KeyCode::Char(c)));
+            app.dispatch_actions_with_loader(typed, &shell, repo.as_path(), None)
+                .await;
+        }
+        assert_eq!(app.state.confirm.as_ref().unwrap().typed_input(), "yes");
+
+        let accept = app.handle_key(key(KeyCode::Enter));
+        app.dispatch_actions_with_loader(accept, &shell, repo.as_path(), None)
+            .await;
+
+        assert!(app.state.confirm.is_none());
+    }
+
+    #[tokio::test]
+    async fn danger_modal_esc_cancels_without_firing_action() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.status = Some("untouched".to_string());
+
+        app.state.confirm = Some(
+            ConfirmModal::new(
+                "Merge PR?",
+                "This merges the stack into main.",
+                "Merge",
+                true,
+            )
+            .on_confirm(Action::ClearStatus),
+        );
+
+        for c in "yes".chars() {
+            let typed = app.handle_key(key(KeyCode::Char(c)));
+            app.dispatch_actions_with_loader(typed, &shell, repo.as_path(), None)
+                .await;
+        }
+
+        let cancel = app.handle_key(key(KeyCode::Esc));
+        assert!(matches!(cancel.as_slice(), [Action::ConfirmCancel]));
+        app.dispatch_actions_with_loader(cancel, &shell, repo.as_path(), None)
+            .await;
+
+        assert!(app.state.confirm.is_none());
+        // The attached action (ClearStatus) must never have fired.
+        assert_eq!(app.state.status.as_deref(), Some("untouched"));
     }
 }
