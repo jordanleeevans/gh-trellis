@@ -241,23 +241,18 @@ impl App {
                 layer_index,
                 force,
             } => {
-                let Some((cache_key, branch, has_pull_request)) =
-                    self.layer_load_context(*stack_index, *layer_index)
+                let Some((cache_key, layer)) = self.layer_load_context(*stack_index, *layer_index)
                 else {
                     self.state.status = Some("selected layer is no longer available".to_string());
                     return true;
                 };
-
-                if !has_pull_request {
-                    return true;
-                }
 
                 if !self.state.layer_details.should_load(&cache_key, *force) {
                     return true;
                 }
 
                 self.state.layer_details.mark_loading(cache_key.clone());
-                loader.load_detail(cache_key, branch);
+                loader.load_detail(cache_key, layer);
                 true
             }
             Action::LoadLayerDiff {
@@ -288,14 +283,10 @@ impl App {
         &self,
         stack_index: usize,
         layer_index: usize,
-    ) -> Option<(String, String, bool)> {
+    ) -> Option<(String, Layer)> {
         let stack = self.state.stacks.get(stack_index)?;
         let layer = stack.layers.get(layer_index)?;
-        Some((
-            layer_detail_cache_key(stack, layer),
-            layer.branch.clone(),
-            layer.pull_request.is_some(),
-        ))
+        Some((layer_detail_cache_key(stack, layer), layer.clone()))
     }
 
     fn layer_diff_context(
@@ -466,16 +457,12 @@ impl App {
                     return Vec::new();
                 };
 
-                if layer.pull_request.is_none() {
-                    return Vec::new();
-                }
-
                 let cache_key = layer_detail_cache_key(stack, layer);
                 if !self.state.layer_details.should_load(&cache_key, *force) {
                     return Vec::new();
                 }
 
-                match hydrate_layer_detail(shell, repo, &layer.branch).await {
+                match hydrate_layer_detail(shell, repo, layer).await {
                     Ok(detail) => {
                         self.state.layer_details.store_result(cache_key, Ok(detail));
                     }
@@ -605,11 +592,11 @@ impl ActionScheduler {
         });
     }
 
-    fn load_detail(&self, cache_key: String, branch: String) {
+    fn load_detail(&self, cache_key: String, layer: Layer) {
         let repo = self.repo.clone();
         let tx = self.tx.clone();
         tokio::spawn(async move {
-            let result = hydrate_layer_detail(&ProcessShell, repo.as_path(), &branch)
+            let result = hydrate_layer_detail(&ProcessShell, repo.as_path(), &layer)
                 .await
                 .map_err(|error| friendly_shell_error("load layer detail", &error));
             let _ = tx.send(Action::LayerDetailLoaded { cache_key, result });
