@@ -2,7 +2,10 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::git::{CommitEntry, log_range};
 use crate::shell::{Shell, ShellError};
+
+use super::layer::Layer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LayerDetail {
@@ -141,6 +144,33 @@ impl From<GhCommit> for LayerCommit {
     }
 }
 
+impl From<CommitEntry> for LayerCommit {
+    fn from(entry: CommitEntry) -> Self {
+        LayerCommit {
+            oid: entry.hash,
+            subject: entry.subject,
+            author: Some(entry.author),
+            authored_at: entry.authored_at,
+        }
+    }
+}
+
+impl PullRequestDetail {
+    /// Placeholder for a layer with no linked pull request. `title` is left
+    /// empty rather than `Option`al to keep [`PullRequestDetail`] a plain
+    /// struct — callers rendering it should fall back to the layer's own
+    /// branch name or a "not submitted" label when `title` is empty.
+    fn none() -> Self {
+        PullRequestDetail {
+            title: String::new(),
+            description_snippet: None,
+            reviewers: Vec::new(),
+            checks: CheckSummary::default(),
+            labels: Vec::new(),
+        }
+    }
+}
+
 impl CheckSummary {
     fn from_checks(checks: &[GhStatusCheck]) -> Self {
         let mut summary = CheckSummary {
@@ -191,11 +221,31 @@ fn reviewers(reviews: Vec<GhReview>, requests: Vec<GhReviewRequest>) -> Vec<Revi
     reviewers
 }
 
+/// Hydrates full detail for `layer`: its commits, and — when it has a linked
+/// pull request — that pull request's full metadata.
+///
+/// A layer with no pull request yet (not submitted) has nothing for `gh pr
+/// view` to report, so its commits come from `git log` directly instead, and
+/// `pull_request` is left at its empty placeholder (see
+/// `PullRequestDetail::none`).
 pub async fn hydrate_layer_detail(
     shell: &impl Shell,
     repo: &Path,
-    branch: &str,
+    layer: &Layer,
 ) -> Result<LayerDetail, ShellError> {
+    if layer.pull_request.is_none() {
+        let commits = log_range(shell, repo, &layer.base, &layer.branch)
+            .await?
+            .into_iter()
+            .map(LayerCommit::from)
+            .collect();
+
+        return Ok(LayerDetail {
+            commits,
+            pull_request: PullRequestDetail::none(),
+        });
+    }
+
     let output = shell
         .run(
             repo,
@@ -203,7 +253,7 @@ pub async fn hydrate_layer_detail(
             &[
                 "pr",
                 "view",
-                branch,
+                &layer.branch,
                 "--json",
                 "title,body,commits,reviews,reviewRequests,statusCheckRollup,labels",
             ],
@@ -301,5 +351,104 @@ mod tests {
     #[test]
     fn omits_description_snippet_for_blank_body() {
         assert_eq!(description_snippet(" \n\t "), None);
+    }
+
+    use crate::shell::{MockShell, ShellOutput};
+
+    use super::super::pull_request::PullRequestRef;
+
+    fn layer_with_pr(branch: &str, base: &str) -> Layer {
+        Layer {
+            branch: branch.to_string(),
+            head: Some("abc123".to_string()),
+            base: base.to_string(),
+            is_current: false,
+            is_merged: false,
+            is_queued: false,
+            needs_rebase: false,
+            pull_request: Some(PullRequestRef {
+                number: 44,
+                url: "https://github.com/o/r/pull/44".to_string(),
+                state: "OPEN".to_string(),
+                title: None,
+                is_draft: None,
+                checks_status: None,
+                review_decision: None,
+            }),
+            commits: Vec::new(),
+            position: 0,
+        }
+    }
+
+    fn layer_without_pr(branch: &str, base: &str) -> Layer {
+        Layer {
+            pull_request: None,
+            head: None,
+            ..layer_with_pr(branch, base)
+        }
+    }
+
+    #[tokio::test]
+    async fn hydrates_a_submitted_layer_via_gh_pr_view() {
+        let repo = std::env::current_dir().unwrap();
+        let layer = layer_with_pr("layer-1", "main");
+        let shell = MockShell::new().when(
+            "gh",
+            &[
+                "pr",
+                "view",
+                "layer-1",
+                "--json",
+                "title,body,commits,reviews,reviewRequests,statusCheckRollup,labels",
+            ],
+            Ok(ShellOutput {
+                stdout: PR_DETAIL.to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        );
+
+        let detail = hydrate_layer_detail(&shell, repo.as_path(), &layer)
+            .await
+            .unwrap();
+
+        assert_eq!(detail.pull_request.title, "Add layer detail pane");
+        assert_eq!(detail.commits.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn hydrates_an_unsubmitted_layer_from_git_log() {
+        let repo = std::env::current_dir().unwrap();
+        let layer = layer_without_pr("layer-1", "main");
+        let shell = MockShell::new().when(
+            "git",
+            &[
+                "log",
+                "--reverse",
+                "main..layer-1",
+                "--format=%H\u{1f}%s\u{1f}%an\u{1f}%aI",
+            ],
+            Ok(ShellOutput {
+                stdout: "abc123\u{1f}feat: thing\u{1f}Jordan Evans\u{1f}2026-09-14T23:03:34Z\n"
+                    .to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        );
+
+        let detail = hydrate_layer_detail(&shell, repo.as_path(), &layer)
+            .await
+            .unwrap();
+
+        assert_eq!(detail.pull_request, PullRequestDetail::none());
+        assert_eq!(
+            detail.commits,
+            vec![LayerCommit {
+                oid: "abc123".to_string(),
+                subject: "feat: thing".to_string(),
+                author: Some("Jordan Evans".to_string()),
+                authored_at: "2026-09-14T23:03:34Z".to_string(),
+            }]
+        );
     }
 }

@@ -540,6 +540,7 @@ fn detail_lines(
     let pr = layer.pull_request.as_ref();
     let title = detail
         .map(|detail| detail.pull_request.title.clone())
+        .filter(|title| !title.is_empty())
         .or_else(|| pr.and_then(|pr| pr.title.clone()))
         .unwrap_or_else(|| "Not submitted".to_string());
     let author = detail

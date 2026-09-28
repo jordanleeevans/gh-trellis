@@ -9,7 +9,7 @@ mod version;
 
 pub use branch::branch;
 pub use diff::diff;
-pub use log::log;
+pub use log::{CommitEntry, log, log_range};
 pub use rebase::rebase;
 pub use status::status;
 pub use version::version;
