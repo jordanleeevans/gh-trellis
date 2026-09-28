@@ -1,4 +1,7 @@
+use crate::config::keymap::KeyBinding;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyIntent {
@@ -25,31 +28,138 @@ pub(crate) enum KeyIntent {
     DismissMessage,
 }
 
-pub(crate) fn key_intent(key: KeyEvent) -> Option<KeyIntent> {
-    match (key.code, key.modifiers) {
-        (KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(KeyIntent::HalfPageDown),
-        (KeyCode::Char('u'), KeyModifiers::CONTROL) => Some(KeyIntent::HalfPageUp),
-        (KeyCode::Char('G'), _) => Some(KeyIntent::End),
-        (KeyCode::Down | KeyCode::Char('j'), _) => Some(KeyIntent::MoveDown),
-        (KeyCode::Up | KeyCode::Char('k'), _) => Some(KeyIntent::MoveUp),
-        (KeyCode::Tab, _) => Some(KeyIntent::FocusNext),
-        (KeyCode::BackTab, _) => Some(KeyIntent::FocusPrevious),
-        (KeyCode::Enter | KeyCode::Char(' '), _) => Some(KeyIntent::DrillIn),
-        (KeyCode::Esc | KeyCode::Char('q'), _) => Some(KeyIntent::Back),
-        (KeyCode::Char('r'), _) => Some(KeyIntent::Refresh),
-        (KeyCode::Char('c'), _) => Some(KeyIntent::Checkout),
-        (KeyCode::Char('a'), _) => Some(KeyIntent::AddLayer),
-        (KeyCode::Char('d'), _) => Some(KeyIntent::ToggleDiff),
-        (KeyCode::Char('s'), _) => Some(KeyIntent::Submit),
-        (KeyCode::Char('t'), _) => Some(KeyIntent::ToggleSubmitAuto),
-        (KeyCode::Char('p'), _) => Some(KeyIntent::ToggleSubmitOpen),
-        (KeyCode::Char('?'), _) => Some(KeyIntent::Help),
-        (KeyCode::PageDown, _) => Some(KeyIntent::PageDown),
-        (KeyCode::PageUp | KeyCode::Backspace, _) => Some(KeyIntent::PageUp),
-        (KeyCode::Char('o') | KeyCode::Char('O'), _) => Some(KeyIntent::OpenExternal),
-        (KeyCode::Char('x'), _) => Some(KeyIntent::DismissMessage),
-        _ => None,
+const NONE: KeyModifiers = KeyModifiers::NONE;
+
+const fn bind(code: KeyCode) -> KeyBinding {
+    KeyBinding::new(code, NONE)
+}
+
+const fn ch(c: char) -> KeyBinding {
+    bind(KeyCode::Char(c))
+}
+
+/// Snake-case names used in the `[keybindings]` config table.
+const INTENT_NAMES: &[(&str, KeyIntent)] = &[
+    ("move_down", KeyIntent::MoveDown),
+    ("move_up", KeyIntent::MoveUp),
+    ("focus_next", KeyIntent::FocusNext),
+    ("focus_previous", KeyIntent::FocusPrevious),
+    ("drill_in", KeyIntent::DrillIn),
+    ("back", KeyIntent::Back),
+    ("quit", KeyIntent::Back),
+    ("refresh", KeyIntent::Refresh),
+    ("checkout", KeyIntent::Checkout),
+    ("add_layer", KeyIntent::AddLayer),
+    ("toggle_diff", KeyIntent::ToggleDiff),
+    ("submit", KeyIntent::Submit),
+    ("toggle_submit_auto", KeyIntent::ToggleSubmitAuto),
+    ("toggle_submit_open", KeyIntent::ToggleSubmitOpen),
+    ("help", KeyIntent::Help),
+    ("page_down", KeyIntent::PageDown),
+    ("page_up", KeyIntent::PageUp),
+    ("half_page_down", KeyIntent::HalfPageDown),
+    ("half_page_up", KeyIntent::HalfPageUp),
+    ("end", KeyIntent::End),
+    ("open_external", KeyIntent::OpenExternal),
+    ("dismiss_message", KeyIntent::DismissMessage),
+];
+
+fn default_bindings() -> Vec<(KeyBinding, KeyIntent)> {
+    use KeyIntent::*;
+    let ctrl = |c| KeyBinding::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+    vec![
+        (ctrl('d'), HalfPageDown),
+        (ctrl('u'), HalfPageUp),
+        (ch('G'), End),
+        (bind(KeyCode::Down), MoveDown),
+        (ch('j'), MoveDown),
+        (bind(KeyCode::Up), MoveUp),
+        (ch('k'), MoveUp),
+        (bind(KeyCode::Tab), FocusNext),
+        (bind(KeyCode::BackTab), FocusPrevious),
+        (bind(KeyCode::Enter), DrillIn),
+        (ch(' '), DrillIn),
+        (bind(KeyCode::Esc), Back),
+        (ch('q'), Back),
+        (ch('r'), Refresh),
+        (ch('c'), Checkout),
+        (ch('a'), AddLayer),
+        (ch('d'), ToggleDiff),
+        (ch('s'), Submit),
+        (ch('t'), ToggleSubmitAuto),
+        (ch('p'), ToggleSubmitOpen),
+        (ch('?'), Help),
+        (bind(KeyCode::PageDown), PageDown),
+        (bind(KeyCode::PageUp), PageUp),
+        (bind(KeyCode::Backspace), PageUp),
+        (ch('o'), OpenExternal),
+        (ch('O'), OpenExternal),
+        (ch('x'), DismissMessage),
+    ]
+}
+
+/// Data-driven key table: default bindings with optional per-intent overrides.
+#[derive(Debug, Clone)]
+pub(crate) struct Keymap {
+    entries: Vec<(KeyBinding, KeyIntent)>,
+}
+
+impl Keymap {
+    pub(crate) fn default_keymap() -> Self {
+        Self {
+            entries: default_bindings(),
+        }
     }
+
+    /// Apply overrides keyed by intent name. An overridden intent loses all of
+    /// its default keys, and any key it claims is taken from other intents.
+    pub(crate) fn with_overrides(
+        mut self,
+        overrides: &BTreeMap<String, Vec<KeyBinding>>,
+    ) -> Result<Self, String> {
+        let mut resolved = Vec::new();
+        for (name, bindings) in overrides {
+            let intent = INTENT_NAMES
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, i)| *i)
+                .ok_or_else(|| {
+                    let names: Vec<&str> = INTENT_NAMES.iter().map(|(n, _)| *n).collect();
+                    format!(
+                        "[keybindings] unknown action {name:?} (available: {})",
+                        names.join(", ")
+                    )
+                })?;
+            resolved.push((intent, bindings));
+        }
+        for (intent, bindings) in resolved {
+            self.entries
+                .retain(|(b, i)| *i != intent && !bindings.contains(b));
+            self.entries.extend(bindings.iter().map(|b| (*b, intent)));
+        }
+        Ok(self)
+    }
+
+    /// Most specific (most modifiers) matching binding wins; ties go to table order.
+    pub(crate) fn lookup(&self, key: KeyEvent) -> Option<KeyIntent> {
+        self.entries
+            .iter()
+            .rev()
+            .filter(|(b, _)| b.matches(key.code, key.modifiers))
+            .max_by_key(|(b, _)| b.modifiers.bits().count_ones())
+            .map(|(_, i)| *i)
+    }
+}
+
+static KEYMAP: OnceLock<Keymap> = OnceLock::new();
+
+/// Install the process-wide keymap from config (first call wins).
+pub(crate) fn install(keymap: Keymap) {
+    let _ = KEYMAP.set(keymap);
+}
+
+pub(crate) fn key_intent(key: KeyEvent) -> Option<KeyIntent> {
+    KEYMAP.get_or_init(Keymap::default_keymap).lookup(key)
 }
 
 #[cfg(test)]
@@ -116,6 +226,31 @@ mod tests {
             key_intent(key(KeyCode::Char('p'))),
             Some(KeyIntent::ToggleSubmitOpen)
         );
+    }
+
+    #[test]
+    fn overrides_replace_default_keys() {
+        let mut o = BTreeMap::new();
+        o.insert(
+            "quit".to_string(),
+            vec![KeyBinding::new(KeyCode::Char('x'), KeyModifiers::NONE)],
+        );
+        let map = Keymap::default_keymap().with_overrides(&o).unwrap();
+        assert_eq!(map.lookup(key(KeyCode::Char('x'))), Some(KeyIntent::Back));
+        assert_eq!(map.lookup(key(KeyCode::Char('q'))), None);
+        assert_eq!(map.lookup(key(KeyCode::Esc)), None);
+        assert_eq!(
+            map.lookup(key(KeyCode::Char('j'))),
+            Some(KeyIntent::MoveDown)
+        );
+    }
+
+    #[test]
+    fn unknown_action_is_rejected() {
+        let mut o = BTreeMap::new();
+        o.insert("nope".to_string(), vec![]);
+        let e = Keymap::default_keymap().with_overrides(&o).unwrap_err();
+        assert!(e.contains("nope"));
     }
 
     fn key(code: KeyCode) -> KeyEvent {

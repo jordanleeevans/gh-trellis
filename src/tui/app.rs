@@ -20,11 +20,6 @@ use super::layer_resource::LayerResourceCache;
 use super::stack_layers;
 use super::submit_progress::{LayerSubmitStatus, SubmitProgress};
 
-/// Remote to push branches to during submit. `gh stack submit --remote`
-/// lets the real tool auto-detect or override this; this TUI doesn't yet
-/// surface remote selection, so it assumes the common `origin` convention.
-const SUBMIT_REMOTE: &str = "origin";
-
 /// Which stack is currently selected in the unified browser.
 #[derive(Debug, Clone, Copy)]
 pub enum Screen {
@@ -869,7 +864,7 @@ impl ActionScheduler {
             run_submit_sequence(
                 &ProcessShell,
                 repo.as_path(),
-                SUBMIT_REMOTE,
+                &crate::config::get().default_remote,
                 &layers,
                 options,
                 |layer_index, status| {

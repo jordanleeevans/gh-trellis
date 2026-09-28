@@ -20,7 +20,6 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
-use crate::theme::glyphs::NERD_FONT;
 use crate::theme::ui::THEME;
 
 use super::app::Action;
@@ -157,7 +156,11 @@ pub(crate) fn render(frame: &mut Frame, area: Rect, modal: &ConfirmModal) {
     };
 
     let title_text = if modal.danger {
-        format!(" {} {} ", NERD_FONT.warning, modal.title)
+        format!(
+            " {} {} ",
+            crate::theme::glyphs::current().warning,
+            modal.title
+        )
     } else {
         format!(" {} ", modal.title)
     };

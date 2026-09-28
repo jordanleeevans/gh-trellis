@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Gauge, ListState, Paragraph, Wrap};
 
 use crate::stack::{Layer, LayerDetail, StackSummary};
-use crate::theme::glyphs::{GlyphSet, NERD_FONT};
+use crate::theme::glyphs::GlyphSet;
 use crate::theme::ui::THEME;
 use crate::tui::app::{
     Action, AppState, Component, Screen, layer_detail_cache_key, layer_diff_cache_key,
@@ -804,7 +804,7 @@ fn label_span(label: &str) -> Span<'static> {
 }
 
 fn glyphs() -> &'static GlyphSet {
-    &NERD_FONT
+    crate::theme::glyphs::current()
 }
 
 impl Component for StackLayers {
