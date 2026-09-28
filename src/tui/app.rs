@@ -9,11 +9,20 @@ use tokio::sync::mpsc;
 use crate::git;
 use crate::shell::{ProcessShell, Shell, ShellError};
 use crate::stack::hydrate_layer_detail;
-use crate::stack::{Layer, LayerDetail, StackSummary, list_stacks};
+use crate::stack::{
+    Layer, LayerDetail, StackSummary, SubmitOptions, list_stacks, push_layer_branch,
+    sync_layer_pull_request,
+};
 
 use super::keymap::{KeyIntent, key_intent};
 use super::layer_resource::LayerResourceCache;
 use super::stack_layers;
+use super::submit_progress::{LayerSubmitStatus, SubmitProgress};
+
+/// Remote to push branches to during submit. `gh stack submit --remote`
+/// lets the real tool auto-detect or override this; this TUI doesn't yet
+/// surface remote selection, so it assumes the common `origin` convention.
+const SUBMIT_REMOTE: &str = "origin";
 
 /// Which stack is currently selected in the unified browser.
 #[derive(Debug, Clone, Copy)]
@@ -82,6 +91,23 @@ pub enum Action {
     SetError(String),
     ClearError,
     ClearStatus,
+    SubmitStack {
+        stack_index: usize,
+    },
+    ToggleSubmitAuto,
+    ToggleSubmitOpen,
+    SubmitStarted {
+        stack_index: usize,
+    },
+    SubmitLayerProgress {
+        stack_index: usize,
+        layer_index: usize,
+        status: LayerSubmitStatus,
+    },
+    SubmitFinished {
+        stack_index: usize,
+    },
+    DismissSubmit,
 }
 
 pub trait Component {
@@ -102,6 +128,8 @@ pub struct AppState {
     pub last_successful_stacks: Vec<StackSummary>,
     pub layer_details: LayerResourceCache<LayerDetail>,
     pub layer_diffs: LayerResourceCache<String>,
+    pub submit_progress: Option<SubmitProgress>,
+    pub submit_options: SubmitOptions,
     pub(crate) should_quit: bool,
 }
 
@@ -124,6 +152,8 @@ impl AppState {
             last_successful_stacks: Vec::new(),
             layer_details: LayerResourceCache::default(),
             layer_diffs: LayerResourceCache::default(),
+            submit_progress: None,
+            submit_options: SubmitOptions::default(),
             should_quit: false,
         }
     }
@@ -275,8 +305,29 @@ impl App {
                 loader.load_diff(cache_key, lower, branch);
                 true
             }
+            Action::SubmitStarted { stack_index } => {
+                let Some(layers) = self.submit_layers(*stack_index) else {
+                    self.state.status = Some("selected stack is no longer available".to_string());
+                    return true;
+                };
+
+                let branches = layers.iter().map(|layer| layer.branch.clone()).collect();
+                self.state.submit_progress = Some(SubmitProgress::new(*stack_index, branches));
+                loader.submit_stack(*stack_index, layers, self.state.submit_options);
+                true
+            }
             _ => false,
         }
+    }
+
+    /// The layers to submit for `stack_index`, or `None` when the stack has
+    /// none (already vanished, or has no layers to push).
+    fn submit_layers(&self, stack_index: usize) -> Option<Vec<Layer>> {
+        let stack = self.state.stacks.get(stack_index)?;
+        if stack.layers.is_empty() {
+            return None;
+        }
+        Some(stack.layers.clone())
     }
 
     fn layer_load_context(
@@ -552,6 +603,66 @@ impl App {
                 self.state.error = None;
                 Vec::new()
             }
+            Action::SubmitStack { stack_index } => {
+                if let Some(progress) = &self.state.submit_progress
+                    && !progress.finished
+                {
+                    self.state.status = Some("a submit is already in progress".to_string());
+                    return Vec::new();
+                }
+
+                if self.submit_layers(*stack_index).is_none() {
+                    self.state.status = Some("selected stack has no layers to submit".to_string());
+                    return Vec::new();
+                }
+
+                vec![Action::SubmitStarted {
+                    stack_index: *stack_index,
+                }]
+            }
+            Action::SubmitStarted { stack_index } => {
+                let Some(layers) = self.submit_layers(*stack_index) else {
+                    self.state.status = Some("selected stack is no longer available".to_string());
+                    return Vec::new();
+                };
+
+                let branches = layers.iter().map(|layer| layer.branch.clone()).collect();
+                self.state.submit_progress = Some(SubmitProgress::new(*stack_index, branches));
+                Vec::new()
+            }
+            Action::SubmitLayerProgress {
+                stack_index,
+                layer_index,
+                status,
+            } => {
+                if let Some(progress) = &mut self.state.submit_progress
+                    && progress.stack_index == *stack_index
+                {
+                    progress.set_status(*layer_index, status.clone());
+                }
+                Vec::new()
+            }
+            Action::SubmitFinished { stack_index } => {
+                if let Some(progress) = &mut self.state.submit_progress
+                    && progress.stack_index == *stack_index
+                {
+                    progress.finished = true;
+                    return vec![Action::RefreshStacks];
+                }
+                Vec::new()
+            }
+            Action::ToggleSubmitAuto => {
+                self.state.submit_options.auto = !self.state.submit_options.auto;
+                Vec::new()
+            }
+            Action::ToggleSubmitOpen => {
+                self.state.submit_options.open = !self.state.submit_options.open;
+                Vec::new()
+            }
+            Action::DismissSubmit => {
+                self.state.submit_progress = None;
+                Vec::new()
+            }
             Action::SelectNext
             | Action::SelectPrevious
             | Action::FocusNextPanel
@@ -612,6 +723,80 @@ impl ActionScheduler {
                 .map_err(|error| friendly_shell_error("load layer diff", &error));
             let _ = tx.send(Action::LayerDiffLoaded { cache_key, result });
         });
+    }
+
+    /// Submits every layer of the stack at `stack_index`, one at a time,
+    /// sending a [`Action::SubmitLayerProgress`] as each layer's push
+    /// completes and again as its pull request step completes, so a
+    /// partial failure on one layer is reported for that layer alone —
+    /// processing continues on to the rest of the stack rather than
+    /// aborting the whole submit.
+    fn submit_stack(&self, stack_index: usize, layers: Vec<Layer>, options: SubmitOptions) {
+        let repo = self.repo.clone();
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            run_submit_sequence(
+                &ProcessShell,
+                repo.as_path(),
+                SUBMIT_REMOTE,
+                &layers,
+                options,
+                |layer_index, status| {
+                    let _ = tx.send(Action::SubmitLayerProgress {
+                        stack_index,
+                        layer_index,
+                        status,
+                    });
+                },
+            )
+            .await;
+            let _ = tx.send(Action::SubmitFinished { stack_index });
+        });
+    }
+}
+
+/// Pushes and syncs the pull request for each of `layers` in order,
+/// reporting one status per layer as it changes via `on_progress`
+/// (`layer_index` into `layers`).
+///
+/// A layer whose push or pull request step fails is reported as
+/// [`LayerSubmitStatus::Failed`] and the loop moves on to the next layer —
+/// a failure on one layer never stops the rest of the stack from being
+/// submitted, and never gets folded into a single overall pass/fail result.
+async fn run_submit_sequence(
+    shell: &impl Shell,
+    repo: &Path,
+    remote: &str,
+    layers: &[Layer],
+    options: SubmitOptions,
+    mut on_progress: impl FnMut(usize, LayerSubmitStatus),
+) {
+    for (layer_index, layer) in layers.iter().enumerate() {
+        on_progress(layer_index, LayerSubmitStatus::InProgress);
+
+        if let Err(error) = push_layer_branch(shell, repo, remote, &layer.branch).await {
+            on_progress(
+                layer_index,
+                LayerSubmitStatus::Failed(friendly_shell_error("push layer", &error)),
+            );
+            continue;
+        }
+
+        on_progress(layer_index, LayerSubmitStatus::Pushed);
+
+        let status = match sync_layer_pull_request(shell, repo, layer, &options).await {
+            Ok(crate::stack::SubmitLayerOutcome::PullRequestCreated { number }) => {
+                LayerSubmitStatus::PullRequestCreated { number }
+            }
+            Ok(crate::stack::SubmitLayerOutcome::PullRequestUpdated { number }) => {
+                LayerSubmitStatus::PullRequestUpdated { number }
+            }
+            Err(error) => {
+                LayerSubmitStatus::Failed(friendly_shell_error("submit pull request", &error))
+            }
+        };
+
+        on_progress(layer_index, status);
     }
 }
 
@@ -1049,5 +1234,329 @@ mod tests {
         app.apply_action(&Action::Tick, &shell, repo.as_path())
             .await;
         assert_eq!(app.state.refresh_spinner_frame, 1);
+    }
+
+    fn push_ok(
+        branch: &str,
+    ) -> (
+        &'static str,
+        Vec<String>,
+        Result<crate::shell::ShellOutput, ShellError>,
+    ) {
+        (
+            "git",
+            vec![
+                "push".to_string(),
+                "--force-with-lease".to_string(),
+                "--set-upstream".to_string(),
+                "origin".to_string(),
+                format!("{branch}:{branch}"),
+            ],
+            Ok(crate::shell::ShellOutput {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        )
+    }
+
+    fn mock_when(
+        shell: MockShell,
+        call: (
+            &'static str,
+            Vec<String>,
+            Result<crate::shell::ShellOutput, ShellError>,
+        ),
+    ) -> MockShell {
+        let (program, args, result) = call;
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        shell.when(program, &args, result)
+    }
+
+    #[tokio::test]
+    async fn submit_stack_action_starts_tracking_progress_for_every_layer() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 2)];
+
+        let follow_ups = app
+            .apply_action(
+                &Action::SubmitStack { stack_index: 0 },
+                &shell,
+                repo.as_path(),
+            )
+            .await;
+        assert!(matches!(
+            follow_ups.as_slice(),
+            [Action::SubmitStarted { stack_index: 0 }]
+        ));
+
+        app.apply_action(&follow_ups[0], &shell, repo.as_path())
+            .await;
+
+        let progress = app.state.submit_progress.as_ref().unwrap();
+        assert_eq!(progress.total(), 2);
+        assert_eq!(progress.completed_count(), 0);
+        assert!(!progress.finished);
+    }
+
+    #[tokio::test]
+    async fn submit_stack_action_refuses_to_start_a_second_run_while_one_is_in_progress() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+        app.state.submit_progress =
+            Some(SubmitProgress::new(0, vec!["stack-a-layer-0".to_string()]));
+
+        let follow_ups = app
+            .apply_action(
+                &Action::SubmitStack { stack_index: 0 },
+                &shell,
+                repo.as_path(),
+            )
+            .await;
+
+        assert!(follow_ups.is_empty());
+        assert!(app.state.status.is_some());
+    }
+
+    #[tokio::test]
+    async fn submit_layer_progress_action_updates_only_the_matching_layer() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.submit_progress = Some(SubmitProgress::new(
+            0,
+            vec!["a".to_string(), "b".to_string()],
+        ));
+
+        app.apply_action(
+            &Action::SubmitLayerProgress {
+                stack_index: 0,
+                layer_index: 1,
+                status: LayerSubmitStatus::Failed("boom".to_string()),
+            },
+            &shell,
+            repo.as_path(),
+        )
+        .await;
+
+        let progress = app.state.submit_progress.as_ref().unwrap();
+        assert_eq!(progress.layers[0].status, LayerSubmitStatus::Pending);
+        assert_eq!(
+            progress.layers[1].status,
+            LayerSubmitStatus::Failed("boom".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn submit_finished_action_marks_progress_finished_and_refreshes_stacks() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.submit_progress = Some(SubmitProgress::new(0, vec!["a".to_string()]));
+
+        let follow_ups = app
+            .apply_action(
+                &Action::SubmitFinished { stack_index: 0 },
+                &shell,
+                repo.as_path(),
+            )
+            .await;
+
+        assert!(app.state.submit_progress.as_ref().unwrap().finished);
+        assert!(matches!(follow_ups.as_slice(), [Action::RefreshStacks]));
+    }
+
+    #[tokio::test]
+    async fn toggle_actions_flip_submit_options() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        assert!(!app.state.submit_options.auto);
+        assert!(!app.state.submit_options.open);
+
+        app.apply_action(&Action::ToggleSubmitAuto, &shell, repo.as_path())
+            .await;
+        app.apply_action(&Action::ToggleSubmitOpen, &shell, repo.as_path())
+            .await;
+
+        assert!(app.state.submit_options.auto);
+        assert!(app.state.submit_options.open);
+    }
+
+    #[tokio::test]
+    async fn dismiss_submit_clears_progress() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.submit_progress = Some(SubmitProgress::new(0, vec!["a".to_string()]));
+
+        app.apply_action(&Action::DismissSubmit, &shell, repo.as_path())
+            .await;
+
+        assert!(app.state.submit_progress.is_none());
+    }
+
+    /// Reproduces the issue's acceptance criterion directly: layer 2 of 4
+    /// fails to push while the other three succeed, and the failure must be
+    /// visible on that layer alone rather than failing the whole submit.
+    #[tokio::test]
+    async fn run_submit_sequence_reports_a_partial_failure_per_layer() {
+        let repo = std::env::current_dir().unwrap();
+        let stack = stack_summary("stack-a", 4);
+        let layers = stack.layers.clone();
+
+        let mut shell = MockShell::new();
+        shell = mock_when(shell, push_ok("stack-a-layer-0"));
+        shell = shell.when(
+            "gh",
+            &[
+                "pr",
+                "create",
+                "--head",
+                "stack-a-layer-0",
+                "--base",
+                "main",
+                "--fill",
+            ],
+            Ok(crate::shell::ShellOutput {
+                stdout: "https://github.com/o/r/pull/1".to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        );
+        shell = shell.when(
+            "git",
+            &[
+                "push",
+                "--force-with-lease",
+                "--set-upstream",
+                "origin",
+                "stack-a-layer-1:stack-a-layer-1",
+            ],
+            Err(ShellError::CommandFailed {
+                program: "git".to_string(),
+                output: crate::shell::ShellOutput {
+                    stdout: String::new(),
+                    stderr: "stale info".to_string(),
+                    exit_code: 1,
+                },
+            }),
+        );
+        shell = mock_when(shell, push_ok("stack-a-layer-2"));
+        shell = shell.when(
+            "gh",
+            &[
+                "pr",
+                "create",
+                "--head",
+                "stack-a-layer-2",
+                "--base",
+                "main",
+                "--fill",
+            ],
+            Ok(crate::shell::ShellOutput {
+                stdout: "https://github.com/o/r/pull/3".to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        );
+        shell = mock_when(shell, push_ok("stack-a-layer-3"));
+        shell = shell.when(
+            "gh",
+            &[
+                "pr",
+                "create",
+                "--head",
+                "stack-a-layer-3",
+                "--base",
+                "main",
+                "--fill",
+            ],
+            Ok(crate::shell::ShellOutput {
+                stdout: "https://github.com/o/r/pull/4".to_string(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        );
+
+        let mut results: Vec<(usize, LayerSubmitStatus)> = Vec::new();
+        run_submit_sequence(
+            &shell,
+            repo.as_path(),
+            "origin",
+            &layers,
+            SubmitOptions::default(),
+            |layer_index, status| results.push((layer_index, status)),
+        )
+        .await;
+
+        let terminal: Vec<_> = results
+            .iter()
+            .filter(|(_, status)| status.is_terminal())
+            .cloned()
+            .collect();
+
+        assert_eq!(terminal.len(), 4);
+        assert_eq!(
+            terminal[0],
+            (0, LayerSubmitStatus::PullRequestCreated { number: 1 })
+        );
+        assert!(matches!(&terminal[1], (1, LayerSubmitStatus::Failed(_))));
+        assert_eq!(
+            terminal[2],
+            (2, LayerSubmitStatus::PullRequestCreated { number: 3 })
+        );
+        assert_eq!(
+            terminal[3],
+            (3, LayerSubmitStatus::PullRequestCreated { number: 4 })
+        );
+    }
+
+    #[tokio::test]
+    async fn run_submit_sequence_reports_every_layer_succeeding() {
+        let repo = std::env::current_dir().unwrap();
+        let stack = stack_summary("stack-a", 2);
+        let layers = stack.layers.clone();
+
+        let mut shell = MockShell::new();
+        for (index, branch) in ["stack-a-layer-0", "stack-a-layer-1"].iter().enumerate() {
+            shell = mock_when(shell, push_ok(branch));
+            shell = shell.when(
+                "gh",
+                &["pr", "create", "--head", branch, "--base", "main", "--fill"],
+                Ok(crate::shell::ShellOutput {
+                    stdout: format!("https://github.com/o/r/pull/{}", index + 1),
+                    stderr: String::new(),
+                    exit_code: 0,
+                }),
+            );
+        }
+
+        let mut results: Vec<(usize, LayerSubmitStatus)> = Vec::new();
+        run_submit_sequence(
+            &shell,
+            repo.as_path(),
+            "origin",
+            &layers,
+            SubmitOptions::default(),
+            |layer_index, status| results.push((layer_index, status)),
+        )
+        .await;
+
+        let terminal: Vec<_> = results
+            .into_iter()
+            .filter(|(_, status)| status.is_terminal())
+            .collect();
+        assert_eq!(
+            terminal,
+            vec![
+                (0, LayerSubmitStatus::PullRequestCreated { number: 1 }),
+                (1, LayerSubmitStatus::PullRequestCreated { number: 2 }),
+            ]
+        );
     }
 }
