@@ -10,6 +10,7 @@ pub(crate) enum KeyIntent {
     Back,
     Refresh,
     Checkout,
+    AddLayer,
     ToggleDiff,
     Help,
     PageDown,
@@ -34,6 +35,7 @@ pub(crate) fn key_intent(key: KeyEvent) -> Option<KeyIntent> {
         (KeyCode::Esc | KeyCode::Char('q'), _) => Some(KeyIntent::Back),
         (KeyCode::Char('r'), _) => Some(KeyIntent::Refresh),
         (KeyCode::Char('c'), _) => Some(KeyIntent::Checkout),
+        (KeyCode::Char('a'), _) => Some(KeyIntent::AddLayer),
         (KeyCode::Char('d'), _) => Some(KeyIntent::ToggleDiff),
         (KeyCode::Char('?'), _) => Some(KeyIntent::Help),
         (KeyCode::PageDown, _) => Some(KeyIntent::PageDown),
@@ -72,6 +74,10 @@ mod tests {
         assert_eq!(
             key_intent(key(KeyCode::Char('c'))),
             Some(KeyIntent::Checkout)
+        );
+        assert_eq!(
+            key_intent(key(KeyCode::Char('a'))),
+            Some(KeyIntent::AddLayer)
         );
         assert_eq!(
             key_intent(key(KeyCode::Char('d'))),
