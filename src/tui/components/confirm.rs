@@ -158,7 +158,7 @@ pub(crate) fn render(frame: &mut Frame, area: Rect, modal: &ConfirmModal) {
     let title_text = if modal.danger {
         format!(
             " {} {} ",
-            crate::theme::glyphs::current().warning,
+            crate::tui::widgets::glyphs().warning,
             modal.title
         )
     } else {

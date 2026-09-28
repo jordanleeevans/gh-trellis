@@ -905,6 +905,24 @@ mod tests {
         assert!(matches!(follow_ups.as_slice(), [Action::SetError(_)]));
     }
 
+    /// A failed load used to raise the error without recording it, leaving
+    /// the cache entry stuck in `Loading` ("Loading diff..." forever).
+    #[tokio::test]
+    async fn failed_layer_diff_load_stops_loading_and_reports_error() {
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+        let key = layer_diff_cache_key(&app.state.stacks[0], &app.state.stacks[0].layers[0]);
+        app.state.layer_diffs.mark_loading(key.clone());
+
+        let follow_ups = app.apply(&Action::LayerDiffLoaded {
+            cache_key: key.clone(),
+            result: Err("load layer diff: boom".to_string()),
+        });
+
+        assert!(!app.state.layer_diffs.is_loading(&key));
+        assert!(matches!(follow_ups.as_slice(), [Action::SetError(_)]));
+    }
+
     #[tokio::test]
     async fn load_layer_diff_diffs_bottom_layer_against_trunk() {
         let shell = MockShell::new().when(
@@ -1117,7 +1135,6 @@ mod tests {
 
     #[tokio::test]
     async fn danger_modal_esc_cancels_without_firing_action() {
-        let shell = MockShell::new();
         let mut app = App::new();
         app.state.status = Some("untouched".to_string());
 

@@ -11,7 +11,7 @@ mod components;
 mod effects;
 pub(crate) mod keymap;
 mod messages;
-mod state;
+pub(crate) mod state;
 mod widgets;
 
 pub use app::run;
