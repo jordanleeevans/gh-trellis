@@ -18,6 +18,8 @@ pub(crate) enum KeyIntent {
     Submit,
     ToggleSubmitAuto,
     ToggleSubmitOpen,
+    Sync,
+    ToggleSyncPrune,
     Help,
     PageDown,
     PageUp,
@@ -54,6 +56,8 @@ const INTENT_NAMES: &[(&str, KeyIntent)] = &[
     ("submit", KeyIntent::Submit),
     ("toggle_submit_auto", KeyIntent::ToggleSubmitAuto),
     ("toggle_submit_open", KeyIntent::ToggleSubmitOpen),
+    ("sync", KeyIntent::Sync),
+    ("toggle_sync_prune", KeyIntent::ToggleSyncPrune),
     ("help", KeyIntent::Help),
     ("page_down", KeyIntent::PageDown),
     ("page_up", KeyIntent::PageUp),
@@ -88,6 +92,8 @@ fn default_bindings() -> Vec<(KeyBinding, KeyIntent)> {
         (ch('s'), Submit),
         (ch('t'), ToggleSubmitAuto),
         (ch('p'), ToggleSubmitOpen),
+        (ch('S'), Sync),
+        (ch('P'), ToggleSyncPrune),
         (ch('?'), Help),
         (bind(KeyCode::PageDown), PageDown),
         (bind(KeyCode::PageUp), PageUp),
@@ -225,6 +231,15 @@ mod tests {
         assert_eq!(
             key_intent(key(KeyCode::Char('p'))),
             Some(KeyIntent::ToggleSubmitOpen)
+        );
+        assert_eq!(key_intent(key(KeyCode::Char('S'))), Some(KeyIntent::Sync));
+        assert_eq!(
+            key_intent(KeyEvent::new(KeyCode::Char('S'), KeyModifiers::SHIFT)),
+            Some(KeyIntent::Sync)
+        );
+        assert_eq!(
+            key_intent(key(KeyCode::Char('P'))),
+            Some(KeyIntent::ToggleSyncPrune)
         );
     }
 

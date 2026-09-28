@@ -5,3 +5,4 @@ pub(crate) mod add_layer_prompt;
 pub(crate) mod confirm;
 pub(crate) mod stack_browser;
 pub(crate) mod submit_progress;
+pub(crate) mod sync_confirm;

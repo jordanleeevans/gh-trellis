@@ -3,7 +3,7 @@
 pub(crate) mod layer_resource;
 pub(crate) mod submit_progress;
 
-use crate::stack::{Layer, LayerDetail, StackSummary, SubmitOptions};
+use crate::stack::{Layer, LayerDetail, StackSummary, SubmitOptions, SyncOptions};
 
 use super::components::confirm::ConfirmModal;
 use layer_resource::LayerResourceCache;
@@ -37,6 +37,12 @@ pub struct AppState {
     pub confirm: Option<ConfirmModal>,
     pub submit_progress: Option<SubmitProgress>,
     pub submit_options: SubmitOptions,
+    pub sync_options: SyncOptions,
+    /// A `gh stack sync` is running in the background.
+    pub sync_in_flight: bool,
+    /// Outcome of the last successful sync, shown in the footer until
+    /// dismissed. (`status` is never rendered, so it can't carry this.)
+    pub sync_notice: Option<String>,
     pub should_quit: bool,
 }
 
@@ -57,6 +63,9 @@ impl Default for AppState {
             confirm: None,
             submit_progress: None,
             submit_options: SubmitOptions::default(),
+            sync_options: SyncOptions::default(),
+            sync_in_flight: false,
+            sync_notice: None,
             should_quit: false,
         }
     }

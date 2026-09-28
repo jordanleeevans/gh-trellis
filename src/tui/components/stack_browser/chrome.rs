@@ -80,6 +80,22 @@ pub(super) fn footer_line(state: &AppState) -> Line<'static> {
             Span::styled("x", THEME.text.key.fg(THEME.colors.warning)),
             Span::raw(" dismiss"),
         ])
+    } else if state.sync_in_flight {
+        Line::from(vec![
+            Span::styled(
+                format!("{} ", spinner_frame(state.refresh_spinner_frame)),
+                THEME.text.key.fg(THEME.colors.secondary),
+            ),
+            Span::raw("Syncing stack (fetch, rebase, push)"),
+        ])
+    } else if let Some(notice) = &state.sync_notice {
+        Line::from(vec![
+            Span::styled("sync: ", THEME.text.key.fg(THEME.colors.success)),
+            Span::raw(notice.clone()),
+            Span::raw("  "),
+            Span::styled("x", THEME.text.key.fg(THEME.colors.warning)),
+            Span::raw(" dismiss"),
+        ])
     } else if state.refresh_in_flight {
         Line::from(vec![
             Span::styled(
@@ -117,6 +133,13 @@ pub(super) fn footer_line(state: &AppState) -> Line<'static> {
             Span::raw(format!(
                 " open:{}  ",
                 toggle_label(state.submit_options.open)
+            )),
+            Span::styled("S", THEME.text.key),
+            Span::raw(" sync  "),
+            Span::styled("P", THEME.text.key),
+            Span::raw(format!(
+                " prune:{}  ",
+                toggle_label(state.sync_options.prune)
             )),
             Span::styled("r", THEME.text.key),
             Span::raw(" refresh  "),
@@ -207,5 +230,25 @@ mod tests {
         assert!(text.contains("submit"));
         assert!(text.contains("auto:on"));
         assert!(text.contains("open:off"));
+    }
+
+    #[test]
+    fn footer_shows_sync_hint_and_prune_state() {
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        let text = |state: &AppState| {
+            footer_line(state)
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        };
+        assert!(text(&state).contains("sync"));
+        assert!(text(&state).contains("prune:off"));
+
+        state.sync_options.prune = true;
+        assert!(text(&state).contains("prune:on"));
+
+        state.sync_in_flight = true;
+        assert!(text(&state).contains("Syncing stack"));
     }
 }

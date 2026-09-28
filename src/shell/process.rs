@@ -31,6 +31,7 @@ fn binary_exists(program: &str) -> bool {
 pub struct ProcessShell;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
+const LONG_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// An event emitted while a [`RunningCommand`] executes.
 #[derive(Debug, Clone, PartialEq)]
@@ -59,6 +60,16 @@ impl Shell for ProcessShell {
         args: &[&str],
     ) -> Result<ShellOutput, ShellError> {
         self.run_with_timeout(cwd, program, args, COMMAND_TIMEOUT)
+            .await
+    }
+
+    async fn run_long(
+        &self,
+        cwd: &Path,
+        program: &str,
+        args: &[&str],
+    ) -> Result<ShellOutput, ShellError> {
+        self.run_with_timeout(cwd, program, args, LONG_COMMAND_TIMEOUT)
             .await
     }
 }

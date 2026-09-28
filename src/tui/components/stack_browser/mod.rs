@@ -296,6 +296,10 @@ impl Component for StackBrowser {
                 .unwrap_or_default(),
             Some(KeyIntent::ToggleSubmitAuto) => vec![Action::ToggleSubmitAuto],
             Some(KeyIntent::ToggleSubmitOpen) => vec![Action::ToggleSubmitOpen],
+            Some(KeyIntent::Sync) => selected_stack
+                .map(|stack_index| vec![Action::SyncStack { stack_index }])
+                .unwrap_or_default(),
+            Some(KeyIntent::ToggleSyncPrune) => vec![Action::ToggleSyncPrune],
             Some(KeyIntent::DrillIn) => match self.active_panel {
                 ActivePanel::Stacks => vec![Action::FocusNextPanel],
                 ActivePanel::Layers => vec![Action::FocusNextPanel],
@@ -1064,6 +1068,22 @@ mod tests {
 
         let open = component.handle_key(key(KeyCode::Char('p')), &state);
         assert!(matches!(open.as_slice(), [Action::ToggleSubmitOpen]));
+    }
+
+    #[test]
+    fn handle_key_dispatches_sync_for_selected_stack_and_toggles_prune() {
+        let mut component = StackBrowser::new();
+        let mut state = app_state(vec![stack_summary("a", 2)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+
+        let sync = component.handle_key(key(KeyCode::Char('S')), &state);
+        assert!(matches!(
+            sync.as_slice(),
+            [Action::SyncStack { stack_index: 0 }]
+        ));
+
+        let prune = component.handle_key(key(KeyCode::Char('P')), &state);
+        assert!(matches!(prune.as_slice(), [Action::ToggleSyncPrune]));
     }
 
     #[test]

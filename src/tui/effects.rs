@@ -16,8 +16,8 @@ use tokio::sync::mpsc;
 use crate::git;
 use crate::shell::Shell;
 use crate::stack::{
-    Layer, SubmitEvent, SubmitLayerOutcome, SubmitOptions, hydrate_layer_detail, list_stacks,
-    submit_stack,
+    Layer, SubmitEvent, SubmitLayerOutcome, SubmitOptions, SyncOptions, hydrate_layer_detail,
+    list_stacks, submit_stack, sync_stack,
 };
 
 use super::action::Action;
@@ -161,6 +161,17 @@ impl Effects {
             )
             .await;
             vec![Action::SubmitFinished { stack_index }]
+        });
+    }
+
+    /// Runs `gh stack sync` for the currently checked-out stack, then sends
+    /// [`Action::SyncFinished`] with the outcome (or a user-facing error).
+    pub(crate) fn sync_stack(&self, remote: String, options: SyncOptions) {
+        self.spawn(move |shell, repo, _| async move {
+            let result = sync_stack(&shell, &repo, &remote, options)
+                .await
+                .map_err(|error| friendly_shell_error("sync stack", &error));
+            vec![Action::SyncFinished { result }]
         });
     }
 
