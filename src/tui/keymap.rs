@@ -14,6 +14,8 @@ pub(crate) enum KeyIntent {
     Refresh,
     Checkout,
     AddLayer,
+    Unstack,
+    UnstackRemote,
     ToggleDiff,
     Submit,
     ToggleSubmitAuto,
@@ -50,6 +52,8 @@ const INTENT_NAMES: &[(&str, KeyIntent)] = &[
     ("refresh", KeyIntent::Refresh),
     ("checkout", KeyIntent::Checkout),
     ("add_layer", KeyIntent::AddLayer),
+    ("unstack", KeyIntent::Unstack),
+    ("unstack_remote", KeyIntent::UnstackRemote),
     ("toggle_diff", KeyIntent::ToggleDiff),
     ("submit", KeyIntent::Submit),
     ("toggle_submit_auto", KeyIntent::ToggleSubmitAuto),
@@ -84,6 +88,8 @@ fn default_bindings() -> Vec<(KeyBinding, KeyIntent)> {
         (ch('r'), Refresh),
         (ch('c'), Checkout),
         (ch('a'), AddLayer),
+        (ch('D'), Unstack),
+        (ch('U'), UnstackRemote),
         (ch('d'), ToggleDiff),
         (ch('s'), Submit),
         (ch('t'), ToggleSubmitAuto),
@@ -210,6 +216,14 @@ mod tests {
         assert_eq!(
             key_intent(ctrl_key(KeyCode::Char('u'))),
             Some(KeyIntent::HalfPageUp)
+        );
+        assert_eq!(
+            key_intent(key(KeyCode::Char('D'))),
+            Some(KeyIntent::Unstack)
+        );
+        assert_eq!(
+            key_intent(key(KeyCode::Char('U'))),
+            Some(KeyIntent::UnstackRemote)
         );
         assert_eq!(key_intent(key(KeyCode::Char('G'))), Some(KeyIntent::End));
         assert_eq!(key_intent(key(KeyCode::Char('?'))), Some(KeyIntent::Help));

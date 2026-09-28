@@ -104,6 +104,8 @@ pub(super) fn footer_line(state: &AppState) -> Line<'static> {
             Span::raw(" checkout  "),
             Span::styled("a", THEME.text.key),
             Span::raw(" add layer  "),
+            Span::styled("D/U", THEME.text.key),
+            Span::raw(" unstack local/+remote  "),
             Span::styled("gg/G ^u/^d", THEME.text.key),
             Span::raw(" diff jump  "),
             Span::styled("s", THEME.text.key),
