@@ -9,7 +9,7 @@
 //! effect (push each branch, create or update each branch's pull request)
 //! one layer at a time via plain `git`/`gh` calls whose exit code and output
 //! we control and can report on individually. That's what lets the caller
-//! (see `tui::app::ActionScheduler::submit_stack`) report a clear
+//! (see [`submit_stack`]) report a clear
 //! push/created/updated/failed result per layer instead of a single
 //! pass/fail for the whole stack.
 
@@ -124,6 +124,53 @@ pub async fn sync_layer_pull_request(
 
             Ok(SubmitLayerOutcome::PullRequestUpdated { number: pr.number })
         }
+    }
+}
+
+/// One step of a single layer's progress through [`submit_stack`].
+#[derive(Debug)]
+pub enum SubmitEvent {
+    /// The layer's branch is being pushed.
+    Pushing,
+    /// The push succeeded; the pull request is being created or updated.
+    Pushed,
+    /// Both steps succeeded.
+    Completed(SubmitLayerOutcome),
+    /// The push failed; the pull request step was skipped.
+    PushFailed(ShellError),
+    /// The push succeeded but creating/updating the pull request failed.
+    PullRequestFailed(ShellError),
+}
+
+/// Pushes and syncs the pull request for each of `layers` in order,
+/// reporting each step via `on_event` (with the index into `layers`).
+///
+/// A layer whose push or pull request step fails is reported as failed and
+/// the loop moves on to the next layer — a failure on one layer never stops
+/// the rest of the stack from being submitted, and never gets folded into a
+/// single overall pass/fail result.
+pub async fn submit_stack(
+    shell: &impl Shell,
+    repo: &Path,
+    remote: &str,
+    layers: &[Layer],
+    options: SubmitOptions,
+    mut on_event: impl FnMut(usize, SubmitEvent),
+) {
+    for (layer_index, layer) in layers.iter().enumerate() {
+        on_event(layer_index, SubmitEvent::Pushing);
+
+        if let Err(error) = push_layer_branch(shell, repo, remote, &layer.branch).await {
+            on_event(layer_index, SubmitEvent::PushFailed(error));
+            continue;
+        }
+        on_event(layer_index, SubmitEvent::Pushed);
+
+        let event = match sync_layer_pull_request(shell, repo, layer, &options).await {
+            Ok(outcome) => SubmitEvent::Completed(outcome),
+            Err(error) => SubmitEvent::PullRequestFailed(error),
+        };
+        on_event(layer_index, event);
     }
 }
 

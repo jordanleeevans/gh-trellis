@@ -8,14 +8,14 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Gauge, ListState, Para
 use crate::stack::{Layer, LayerDetail, StackSummary};
 use crate::theme::glyphs::GlyphSet;
 use crate::theme::ui::THEME;
-use crate::tui::app::{
-    Action, AppState, Component, Screen, layer_detail_cache_key, layer_diff_cache_key,
-    lower_layer_ref, spinner_frame,
+use crate::tui::action::Action;
+use crate::tui::component::Component;
+use crate::tui::keymap::{KeyIntent, key_intent};
+use crate::tui::state::submit_progress::{LayerSubmitStatus, SubmitLayerProgress, SubmitProgress};
+use crate::tui::state::{
+    AppState, Screen, layer_detail_cache_key, layer_diff_cache_key, lower_layer_ref,
 };
-
-use super::keymap::{KeyIntent, key_intent};
-use super::panel::panel_block;
-use super::submit_progress::{LayerSubmitStatus, SubmitLayerProgress, SubmitProgress};
+use crate::tui::widgets::{panel_block, spinner_frame};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActivePanel {
@@ -60,7 +60,7 @@ impl AddLayerPrompt {
     }
 }
 
-pub struct StackLayers {
+pub struct StackBrowser {
     stack_list_state: ListState,
     list_state: ListState,
     active_stack_label: Option<String>,
@@ -73,7 +73,7 @@ pub struct StackLayers {
     add_layer_prompt: Option<AddLayerPrompt>,
 }
 
-impl StackLayers {
+impl StackBrowser {
     pub fn new() -> Self {
         Self {
             stack_list_state: ListState::default(),
@@ -807,7 +807,7 @@ fn glyphs() -> &'static GlyphSet {
     crate::theme::glyphs::current()
 }
 
-impl Component for StackLayers {
+impl Component for StackBrowser {
     fn draw(&mut self, frame: &mut Frame, state: &AppState) {
         render(
             frame,
@@ -1041,7 +1041,7 @@ impl Component for StackLayers {
     }
 }
 
-impl StackLayers {
+impl StackBrowser {
     /// Routes a key event while the add-layer prompt is open, so its own
     /// text-entry keys (including letters that are otherwise global
     /// shortcuts, like `q` or `c`) are never mistaken for a `KeyIntent`.
@@ -1591,7 +1591,7 @@ mod tests {
         SubmitOptions,
     };
     use crate::test_fixtures::stack_summary;
-    use crate::tui::layer_resource::LayerResourceCache;
+    use crate::tui::state::layer_resource::LayerResourceCache;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn app_state(stacks: Vec<StackSummary>, screen: Screen) -> AppState {
@@ -1643,7 +1643,7 @@ mod tests {
 
     #[test]
     fn show_layers_preserves_selection_for_same_stack() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 3)], Screen::Layers(0));
 
         component.update(&Action::ShowLayers(0), &mut state);
@@ -1655,7 +1655,7 @@ mod tests {
 
     #[test]
     fn show_layers_resets_selection_when_switching_stacks() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(
             vec![stack_summary("a", 3), stack_summary("b", 3)],
             Screen::Layers(0),
@@ -1671,7 +1671,7 @@ mod tests {
 
     #[test]
     fn stacks_loaded_preserves_selection_for_same_stack_label() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 3)], Screen::Layers(0));
 
         component.update(&Action::ShowLayers(0), &mut state);
@@ -1685,7 +1685,7 @@ mod tests {
 
     #[test]
     fn stacks_loaded_resets_selection_for_different_stack_label() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 3)], Screen::Layers(0));
 
         component.update(&Action::ShowLayers(0), &mut state);
@@ -1699,7 +1699,7 @@ mod tests {
 
     #[test]
     fn handle_key_maps_navigation_actions() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 3)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.update(&Action::FocusNextPanel, &mut state);
@@ -1731,7 +1731,7 @@ mod tests {
 
     #[test]
     fn handle_key_dispatches_open_pr_for_selected_layer() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 3)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.update(&Action::SelectNext, &mut state);
@@ -1749,7 +1749,7 @@ mod tests {
 
     #[test]
     fn handle_key_dispatches_checkout_for_selected_layer() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 3)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.update(&Action::SelectNext, &mut state);
@@ -1767,7 +1767,7 @@ mod tests {
 
     #[test]
     fn handle_key_dispatches_checkout_for_selected_stack_from_stack_panel() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 3)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
 
@@ -1783,7 +1783,7 @@ mod tests {
 
     #[test]
     fn a_opens_add_layer_prompt_on_branch_field() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
 
@@ -1797,7 +1797,7 @@ mod tests {
 
     #[test]
     fn add_layer_prompt_types_into_branch_then_advances_on_enter() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.handle_key(key(KeyCode::Char('a')), &state);
@@ -1809,7 +1809,7 @@ mod tests {
         assert_eq!(component.add_layer_prompt.as_ref().unwrap().branch, "cq");
 
         // Enter with an empty branch is a no-op.
-        let mut empty_component = StackLayers::new();
+        let mut empty_component = StackBrowser::new();
         empty_component.update(&Action::ShowLayers(0), &mut state);
         empty_component.handle_key(key(KeyCode::Char('a')), &state);
         empty_component.handle_key(key(KeyCode::Enter), &state);
@@ -1828,7 +1828,7 @@ mod tests {
 
     #[test]
     fn add_layer_prompt_backspace_removes_last_character() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.handle_key(key(KeyCode::Char('a')), &state);
@@ -1842,7 +1842,7 @@ mod tests {
 
     #[test]
     fn escape_cancels_add_layer_prompt_without_dispatching_actions() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.handle_key(key(KeyCode::Char('a')), &state);
@@ -1856,7 +1856,7 @@ mod tests {
 
     #[test]
     fn enter_on_message_field_submits_add_layer_with_message_and_closes_prompt() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.handle_key(key(KeyCode::Char('a')), &state);
@@ -1883,7 +1883,7 @@ mod tests {
 
     #[test]
     fn enter_on_blank_message_field_submits_add_layer_without_message() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.handle_key(key(KeyCode::Char('a')), &state);
@@ -1907,7 +1907,7 @@ mod tests {
 
     #[test]
     fn d_toggles_diff_and_jk_scroll_it() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
 
@@ -1923,7 +1923,7 @@ mod tests {
 
     #[test]
     fn stack_panel_navigation_switches_selected_stack() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(
             vec![stack_summary("a", 1), stack_summary("b", 1)],
             Screen::Layers(0),
@@ -1943,7 +1943,7 @@ mod tests {
 
     #[test]
     fn enter_advances_focus_and_space_opens_diff_from_files() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         let stack = state.stacks[0].clone();
         let layer = stack.layers[0].clone();
@@ -1966,7 +1966,7 @@ mod tests {
 
     #[test]
     fn files_panel_navigation_changes_selected_file() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         let stack = state.stacks[0].clone();
         let layer = stack.layers[0].clone();
@@ -1987,7 +1987,7 @@ mod tests {
 
     #[test]
     fn diff_panel_supports_vim_navigation() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
         component.update(&Action::ToggleDiffView, &mut state);
@@ -2159,7 +2159,7 @@ mod tests {
 
     #[test]
     fn handle_key_dispatches_submit_for_selected_stack() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 2)], Screen::Layers(0));
         component.update(&Action::ShowLayers(0), &mut state);
 
@@ -2172,7 +2172,7 @@ mod tests {
 
     #[test]
     fn handle_key_toggles_submit_auto_and_open() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
 
         let auto = component.handle_key(key(KeyCode::Char('t')), &state);
@@ -2184,7 +2184,7 @@ mod tests {
 
     #[test]
     fn handle_key_while_submitting_only_allows_dismissal() {
-        let mut component = StackLayers::new();
+        let mut component = StackBrowser::new();
         let mut state = app_state(vec![stack_summary("a", 2)], Screen::Layers(0));
         state.submit_progress = Some(SubmitProgress::new(
             0,

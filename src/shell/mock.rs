@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use super::{Shell, ShellError, ShellOutput};
 
@@ -13,10 +13,14 @@ type Call = (String, Vec<String>);
 /// and are consumed the first time a matching call is made; calling `run`
 /// again with the same `(program, args)` without registering another
 /// response panics, as does calling with a pair that was never registered.
-#[derive(Default)]
+///
+/// Clones share the same responses and call log, so a clone can be handed
+/// to code that needs an owned `Arc<dyn Shell>` while the test keeps one to
+/// inspect.
+#[derive(Default, Clone)]
 pub struct MockShell {
-    responses: Mutex<HashMap<Call, Result<ShellOutput, ShellError>>>,
-    calls: Mutex<Vec<Call>>,
+    responses: Arc<Mutex<HashMap<Call, Result<ShellOutput, ShellError>>>>,
+    calls: Arc<Mutex<Vec<Call>>>,
 }
 
 impl MockShell {

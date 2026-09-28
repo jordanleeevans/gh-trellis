@@ -17,7 +17,7 @@ pub use detail::{
 pub use layer::Layer;
 pub use pull_request::PullRequestRef;
 pub use stack::Stack;
-pub use submit::{SubmitLayerOutcome, SubmitOptions, push_layer_branch, sync_layer_pull_request};
+pub use submit::{SubmitEvent, SubmitLayerOutcome, SubmitOptions, submit_stack};
 pub use summary::{PrCounts, StackSummary, list_stacks};
 
 #[cfg(test)]

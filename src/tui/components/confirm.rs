@@ -22,7 +22,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use crate::theme::ui::THEME;
 
-use super::app::Action;
+use crate::tui::action::Action;
 
 /// The phrase a user must type (case-insensitively) to accept a `danger`
 /// modal. Kept fixed and simple ("yes") rather than per-action so the

@@ -13,6 +13,7 @@ pub use output::ShellOutput;
 pub use process::ProcessShell;
 
 use std::path::Path;
+use std::sync::Arc;
 
 /// Runs external commands in a given working directory.
 #[async_trait::async_trait]
@@ -27,4 +28,18 @@ pub trait Shell: Send + Sync {
         program: &str,
         args: &[&str],
     ) -> Result<ShellOutput, ShellError>;
+}
+
+/// Lets a shared shell (e.g. the TUI's `Arc<dyn Shell>`, cloned into each
+/// background task) be passed anywhere a `&impl Shell` is expected.
+#[async_trait::async_trait]
+impl<S: Shell + ?Sized> Shell for Arc<S> {
+    async fn run(
+        &self,
+        cwd: &Path,
+        program: &str,
+        args: &[&str],
+    ) -> Result<ShellOutput, ShellError> {
+        (**self).run(cwd, program, args).await
+    }
 }
