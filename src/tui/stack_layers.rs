@@ -1,9 +1,9 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, ListState, Paragraph, Wrap};
 
 use crate::stack::{Layer, LayerDetail, StackSummary};
 use crate::theme::glyphs::{GlyphSet, NERD_FONT};
@@ -25,6 +25,40 @@ enum ActivePanel {
     Diff,
 }
 
+/// Which field of the "add layer" prompt is currently being typed into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AddLayerField {
+    Branch,
+    Message,
+}
+
+/// Inline prompt state for `gh stack add`, opened by [`KeyIntent::AddLayer`].
+///
+/// The flow is two sequential single-line fields: the new branch name first,
+/// then an optional commit message (`-m`). Enter on the branch field moves
+/// to the message field (only once the branch name is non-empty); Enter on
+/// the message field submits an [`Action::AddLayer`] (with `message: None`
+/// if left blank) and closes the prompt. Escape cancels at either step
+/// without dispatching anything.
+#[derive(Debug, Clone)]
+struct AddLayerPrompt {
+    stack_index: usize,
+    field: AddLayerField,
+    branch: String,
+    message: String,
+}
+
+impl AddLayerPrompt {
+    fn new(stack_index: usize) -> Self {
+        Self {
+            stack_index,
+            field: AddLayerField::Branch,
+            branch: String::new(),
+            message: String::new(),
+        }
+    }
+}
+
 pub struct StackLayers {
     stack_list_state: ListState,
     list_state: ListState,
@@ -35,6 +69,7 @@ pub struct StackLayers {
     pending_g: bool,
     diff_scroll: u16,
     active_layer_key: Option<String>,
+    add_layer_prompt: Option<AddLayerPrompt>,
 }
 
 impl StackLayers {
@@ -49,6 +84,7 @@ impl StackLayers {
             pending_g: false,
             diff_scroll: 0,
             active_layer_key: None,
+            add_layer_prompt: None,
         }
     }
 
@@ -184,6 +220,8 @@ fn footer_line(state: &AppState) -> Line<'static> {
             Span::raw(" diff  "),
             Span::styled("c", THEME.text.key),
             Span::raw(" checkout  "),
+            Span::styled("a", THEME.text.key),
+            Span::raw(" add layer  "),
             Span::styled("gg/G ^u/^d", THEME.text.key),
             Span::raw(" diff jump  "),
             Span::styled("r", THEME.text.key),
@@ -192,6 +230,59 @@ fn footer_line(state: &AppState) -> Line<'static> {
             Span::raw(" quit"),
         ])
     }
+}
+
+/// Renders the inline `gh stack add` prompt as a small bordered overlay
+/// centered over the rest of the screen.
+fn render_add_layer_prompt(frame: &mut Frame, area: Rect, prompt: &AddLayerPrompt) {
+    let popup_area = centered_rect(60, 8, area);
+    frame.render_widget(Clear, popup_area);
+
+    let (label, value, hint) = match prompt.field {
+        AddLayerField::Branch => (
+            "New branch name",
+            prompt.branch.as_str(),
+            "enter continue  esc cancel",
+        ),
+        AddLayerField::Message => (
+            "Commit message (optional, -m)",
+            prompt.message.as_str(),
+            "enter add layer  esc cancel",
+        ),
+    };
+
+    let lines = vec![
+        Line::from(Span::styled(label, THEME.text.label)),
+        Line::from(Span::raw(format!("{value}\u{2588}"))),
+        Line::from(""),
+        Line::from(Span::styled(hint, THEME.text.muted)),
+    ];
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(panel_block("add layer", true))
+            .wrap(Wrap { trim: false }),
+        popup_area,
+    );
+}
+
+/// Returns a `Rect` of `percent_x`/`percent_y` of `area`, centered within it.
+fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let [_, vertical, _] = Layout::vertical([
+        Constraint::Percentage((100 - percent_y) / 2),
+        Constraint::Percentage(percent_y),
+        Constraint::Percentage((100 - percent_y) / 2),
+    ])
+    .areas(area);
+
+    let [_, horizontal, _] = Layout::horizontal([
+        Constraint::Percentage((100 - percent_x) / 2),
+        Constraint::Percentage(percent_x),
+        Constraint::Percentage((100 - percent_x) / 2),
+    ])
+    .areas(vertical);
+
+    horizontal
 }
 
 fn render_stack(
@@ -598,9 +689,17 @@ impl Component for StackLayers {
             self.selected_diff_file,
             self.diff_scroll,
         );
+
+        if let Some(prompt) = &self.add_layer_prompt {
+            render_add_layer_prompt(frame, frame.area(), prompt);
+        }
     }
 
     fn handle_key(&mut self, key: KeyEvent, state: &AppState) -> Vec<Action> {
+        if self.add_layer_prompt.is_some() {
+            return self.handle_add_layer_prompt_key(key);
+        }
+
         let selected_stack = selected_stack_index(state, self.stack_list_state.selected());
         let is_pending_g = self.pending_g;
         self.pending_g = false;
@@ -681,6 +780,12 @@ impl Component for StackLayers {
                         .unwrap_or_default(),
                 })
                 .unwrap_or_default(),
+            Some(KeyIntent::AddLayer) => {
+                if let Some(stack_index) = selected_stack {
+                    self.add_layer_prompt = Some(AddLayerPrompt::new(stack_index));
+                }
+                Vec::new()
+            }
             Some(KeyIntent::ToggleDiff) => vec![Action::ToggleDiffView],
             Some(KeyIntent::DrillIn) => match self.active_panel {
                 ActivePanel::Stacks => vec![Action::FocusNextPanel],
@@ -794,6 +899,61 @@ impl Component for StackLayers {
 }
 
 impl StackLayers {
+    /// Routes a key event while the add-layer prompt is open, so its own
+    /// text-entry keys (including letters that are otherwise global
+    /// shortcuts, like `q` or `c`) are never mistaken for a `KeyIntent`.
+    fn handle_add_layer_prompt_key(&mut self, key: KeyEvent) -> Vec<Action> {
+        let Some(prompt) = self.add_layer_prompt.as_mut() else {
+            return Vec::new();
+        };
+
+        match key.code {
+            KeyCode::Esc => {
+                self.add_layer_prompt = None;
+            }
+            KeyCode::Enter => match prompt.field {
+                AddLayerField::Branch => {
+                    if !prompt.branch.trim().is_empty() {
+                        prompt.field = AddLayerField::Message;
+                    }
+                }
+                AddLayerField::Message => {
+                    let stack_index = prompt.stack_index;
+                    let branch = prompt.branch.trim().to_string();
+                    let message = prompt.message.trim();
+                    let message = if message.is_empty() {
+                        None
+                    } else {
+                        Some(message.to_string())
+                    };
+                    self.add_layer_prompt = None;
+                    return vec![Action::AddLayer {
+                        stack_index,
+                        branch,
+                        message,
+                    }];
+                }
+            },
+            KeyCode::Backspace => {
+                let field = match prompt.field {
+                    AddLayerField::Branch => &mut prompt.branch,
+                    AddLayerField::Message => &mut prompt.message,
+                };
+                field.pop();
+            }
+            KeyCode::Char(c) if !key.modifiers.intersects(KeyModifiers::CONTROL) => {
+                let field = match prompt.field {
+                    AddLayerField::Branch => &mut prompt.branch,
+                    AddLayerField::Message => &mut prompt.message,
+                };
+                field.push(c);
+            }
+            _ => {}
+        }
+
+        Vec::new()
+    }
+
     fn reset_diff_view_for_selection(&mut self, state: &AppState) {
         let next_key = active_layer_key(
             state,
@@ -1471,6 +1631,130 @@ mod tests {
                 stack_index: 0,
                 layer_index: None
             }]
+        ));
+    }
+
+    #[test]
+    fn a_opens_add_layer_prompt_on_branch_field() {
+        let mut component = StackLayers::new();
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+
+        let actions = component.handle_key(key(KeyCode::Char('a')), &state);
+
+        assert!(actions.is_empty());
+        let prompt = component.add_layer_prompt.as_ref().expect("prompt open");
+        assert_eq!(prompt.stack_index, 0);
+        assert_eq!(prompt.field, AddLayerField::Branch);
+    }
+
+    #[test]
+    fn add_layer_prompt_types_into_branch_then_advances_on_enter() {
+        let mut component = StackLayers::new();
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+        component.handle_key(key(KeyCode::Char('a')), &state);
+
+        // Global shortcut letters are captured as text, not intents, while
+        // the prompt is open.
+        component.handle_key(key(KeyCode::Char('c')), &state);
+        component.handle_key(key(KeyCode::Char('q')), &state);
+        assert_eq!(component.add_layer_prompt.as_ref().unwrap().branch, "cq");
+
+        // Enter with an empty branch is a no-op.
+        let mut empty_component = StackLayers::new();
+        empty_component.update(&Action::ShowLayers(0), &mut state);
+        empty_component.handle_key(key(KeyCode::Char('a')), &state);
+        empty_component.handle_key(key(KeyCode::Enter), &state);
+        assert_eq!(
+            empty_component.add_layer_prompt.as_ref().unwrap().field,
+            AddLayerField::Branch
+        );
+
+        let advance = component.handle_key(key(KeyCode::Enter), &state);
+        assert!(advance.is_empty());
+        assert_eq!(
+            component.add_layer_prompt.as_ref().unwrap().field,
+            AddLayerField::Message
+        );
+    }
+
+    #[test]
+    fn add_layer_prompt_backspace_removes_last_character() {
+        let mut component = StackLayers::new();
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+        component.handle_key(key(KeyCode::Char('a')), &state);
+        component.handle_key(key(KeyCode::Char('x')), &state);
+        component.handle_key(key(KeyCode::Char('y')), &state);
+
+        component.handle_key(key(KeyCode::Backspace), &state);
+
+        assert_eq!(component.add_layer_prompt.as_ref().unwrap().branch, "x");
+    }
+
+    #[test]
+    fn escape_cancels_add_layer_prompt_without_dispatching_actions() {
+        let mut component = StackLayers::new();
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+        component.handle_key(key(KeyCode::Char('a')), &state);
+        component.handle_key(key(KeyCode::Char('x')), &state);
+
+        let actions = component.handle_key(key(KeyCode::Esc), &state);
+
+        assert!(actions.is_empty());
+        assert!(component.add_layer_prompt.is_none());
+    }
+
+    #[test]
+    fn enter_on_message_field_submits_add_layer_with_message_and_closes_prompt() {
+        let mut component = StackLayers::new();
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+        component.handle_key(key(KeyCode::Char('a')), &state);
+        for c in "feature/new".chars() {
+            component.handle_key(key(KeyCode::Char(c)), &state);
+        }
+        component.handle_key(key(KeyCode::Enter), &state);
+        for c in "add a layer".chars() {
+            component.handle_key(key(KeyCode::Char(c)), &state);
+        }
+
+        let actions = component.handle_key(key(KeyCode::Enter), &state);
+
+        assert!(component.add_layer_prompt.is_none());
+        assert!(matches!(
+            actions.as_slice(),
+            [Action::AddLayer {
+                stack_index: 0,
+                branch,
+                message: Some(message),
+            }] if branch == "feature/new" && message == "add a layer"
+        ));
+    }
+
+    #[test]
+    fn enter_on_blank_message_field_submits_add_layer_without_message() {
+        let mut component = StackLayers::new();
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+        component.handle_key(key(KeyCode::Char('a')), &state);
+        for c in "feature/new".chars() {
+            component.handle_key(key(KeyCode::Char(c)), &state);
+        }
+        component.handle_key(key(KeyCode::Enter), &state);
+
+        let actions = component.handle_key(key(KeyCode::Enter), &state);
+
+        assert!(component.add_layer_prompt.is_none());
+        assert!(matches!(
+            actions.as_slice(),
+            [Action::AddLayer {
+                stack_index: 0,
+                branch,
+                message: None,
+            }] if branch == "feature/new"
         ));
     }
 

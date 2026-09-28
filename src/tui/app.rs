@@ -48,6 +48,11 @@ pub enum Action {
         stack_index: usize,
         layer_index: Option<usize>,
     },
+    AddLayer {
+        stack_index: usize,
+        branch: String,
+        message: Option<String>,
+    },
     OpenPullRequest {
         stack_index: usize,
         layer_index: usize,
@@ -413,6 +418,36 @@ impl App {
                         "checkout stack",
                         &error,
                     ))];
+                }
+                vec![Action::RefreshStacks]
+            }
+            Action::AddLayer {
+                stack_index,
+                branch,
+                message,
+            } => {
+                let Some(stack) = self.state.stacks.get(*stack_index) else {
+                    self.state.status = Some("selected stack is no longer available".to_string());
+                    return Vec::new();
+                };
+
+                // `gh stack add` operates on whatever stack is currently
+                // checked out; refuse rather than silently mutating a
+                // different stack than the one the user was browsing.
+                if !stack.is_current {
+                    return vec![Action::SetError(
+                        "checkout this stack before adding a layer".to_string(),
+                    )];
+                }
+
+                let mut args = vec!["stack", "add", branch.as_str()];
+                if let Some(message) = message {
+                    args.push("-m");
+                    args.push(message.as_str());
+                }
+
+                if let Err(error) = shell.run(repo, "gh", &args).await {
+                    return vec![Action::SetError(friendly_shell_error("add layer", &error))];
                 }
                 vec![Action::RefreshStacks]
             }
@@ -914,6 +949,125 @@ mod tests {
                 &Action::CheckoutSelected {
                     stack_index: 0,
                     layer_index: None,
+                },
+                &shell,
+                repo.as_path(),
+            )
+            .await;
+
+        assert!(matches!(follow_ups.as_slice(), [Action::SetError(_)]));
+    }
+
+    #[tokio::test]
+    async fn add_layer_runs_gh_stack_add_with_message() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new().when(
+            "gh",
+            &["stack", "add", "feature/new-layer", "-m", "add new layer"],
+            Ok(crate::shell::ShellOutput {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        );
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+        app.state.stacks[0].is_current = true;
+
+        let follow_ups = app
+            .apply_action(
+                &Action::AddLayer {
+                    stack_index: 0,
+                    branch: "feature/new-layer".to_string(),
+                    message: Some("add new layer".to_string()),
+                },
+                &shell,
+                repo.as_path(),
+            )
+            .await;
+
+        assert!(matches!(follow_ups.as_slice(), [Action::RefreshStacks]));
+    }
+
+    #[tokio::test]
+    async fn add_layer_runs_gh_stack_add_without_message_flag() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new().when(
+            "gh",
+            &["stack", "add", "feature/new-layer"],
+            Ok(crate::shell::ShellOutput {
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: 0,
+            }),
+        );
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+        app.state.stacks[0].is_current = true;
+
+        let follow_ups = app
+            .apply_action(
+                &Action::AddLayer {
+                    stack_index: 0,
+                    branch: "feature/new-layer".to_string(),
+                    message: None,
+                },
+                &shell,
+                repo.as_path(),
+            )
+            .await;
+
+        assert!(matches!(follow_ups.as_slice(), [Action::RefreshStacks]));
+    }
+
+    #[tokio::test]
+    async fn add_layer_returns_set_error_on_failure() {
+        let repo = std::env::current_dir().unwrap();
+        let shell = MockShell::new().when(
+            "gh",
+            &["stack", "add", "feature/new-layer"],
+            Err(crate::shell::ShellError::CommandFailed {
+                program: "gh".to_string(),
+                output: crate::shell::ShellOutput {
+                    stdout: String::new(),
+                    stderr: "boom".to_string(),
+                    exit_code: 1,
+                },
+            }),
+        );
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+        app.state.stacks[0].is_current = true;
+
+        let follow_ups = app
+            .apply_action(
+                &Action::AddLayer {
+                    stack_index: 0,
+                    branch: "feature/new-layer".to_string(),
+                    message: None,
+                },
+                &shell,
+                repo.as_path(),
+            )
+            .await;
+
+        assert!(matches!(follow_ups.as_slice(), [Action::SetError(_)]));
+    }
+
+    #[tokio::test]
+    async fn add_layer_refuses_to_run_on_a_non_current_stack() {
+        let repo = std::env::current_dir().unwrap();
+        // No responses registered: the shell must not be invoked at all.
+        let shell = MockShell::new();
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+
+        let follow_ups = app
+            .apply_action(
+                &Action::AddLayer {
+                    stack_index: 0,
+                    branch: "feature/new-layer".to_string(),
+                    message: None,
                 },
                 &shell,
                 repo.as_path(),
