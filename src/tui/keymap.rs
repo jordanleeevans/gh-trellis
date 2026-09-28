@@ -12,6 +12,9 @@ pub(crate) enum KeyIntent {
     Checkout,
     AddLayer,
     ToggleDiff,
+    Submit,
+    ToggleSubmitAuto,
+    ToggleSubmitOpen,
     Help,
     PageDown,
     PageUp,
@@ -37,6 +40,9 @@ pub(crate) fn key_intent(key: KeyEvent) -> Option<KeyIntent> {
         (KeyCode::Char('c'), _) => Some(KeyIntent::Checkout),
         (KeyCode::Char('a'), _) => Some(KeyIntent::AddLayer),
         (KeyCode::Char('d'), _) => Some(KeyIntent::ToggleDiff),
+        (KeyCode::Char('s'), _) => Some(KeyIntent::Submit),
+        (KeyCode::Char('t'), _) => Some(KeyIntent::ToggleSubmitAuto),
+        (KeyCode::Char('p'), _) => Some(KeyIntent::ToggleSubmitOpen),
         (KeyCode::Char('?'), _) => Some(KeyIntent::Help),
         (KeyCode::PageDown, _) => Some(KeyIntent::PageDown),
         (KeyCode::PageUp | KeyCode::Backspace, _) => Some(KeyIntent::PageUp),
@@ -100,6 +106,15 @@ mod tests {
         assert_eq!(
             key_intent(key(KeyCode::Char('x'))),
             Some(KeyIntent::DismissMessage)
+        );
+        assert_eq!(key_intent(key(KeyCode::Char('s'))), Some(KeyIntent::Submit));
+        assert_eq!(
+            key_intent(key(KeyCode::Char('t'))),
+            Some(KeyIntent::ToggleSubmitAuto)
+        );
+        assert_eq!(
+            key_intent(key(KeyCode::Char('p'))),
+            Some(KeyIntent::ToggleSubmitOpen)
         );
     }
 
