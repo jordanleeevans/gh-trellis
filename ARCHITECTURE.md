@@ -27,7 +27,14 @@ src/
   theme/          palette, text styles, glyph sets (Nerd Font / ASCII)
   tui/
     mod.rs        exposes run()
-    app.rs        App: owns state + components; event loop; reducer
+    app/          App: owns state + components; event loop; reducer
+      mod.rs         event loop, key routing, dispatch, and apply_action: an
+                     exhaustive router that sends each Action to a feature module
+      refresh.rs     stack list refresh      layers.rs    layer detail/diff loading
+      stack_ops.rs   checkout, add layer, open PR, unstack
+      submit.rs      submit + progress       sync.rs      gh stack sync
+      feedback.rs    errors, status, confirm modal
+      test_support.rs  reducer test harness (settle/apply/dispatch_now)
     action.rs     Action enum
     component.rs  Component trait
     effects.rs    Effects: spawns shell work, sends results back as Actions
@@ -37,12 +44,16 @@ src/
                   submit_progress (per-layer submit status)
     components/   one module per panel or overlay
       stack_browser/   the main browser component
-        mod.rs         view state, focus, key handling, layout
+        mod.rs         view state and layout; Component impl delegates to:
+        keys.rs        key press -> Action for the focused panel
+        selection.rs   selection, focus and scroll updates on applied Actions
         navigator.rs   stack list with the selected stack expanded into layers
         layer_detail.rs PR summary for the selected layer
         diff.rs        diff parsing, changed-files tree, diff view
-        chrome.rs      header and footer
+        chrome.rs      header, and a footer of hints for the focused panel,
+                       fitted to the terminal width
       confirm.rs       shared ConfirmModal for every destructive action
+      help.rs          `?` overlay listing every binding and toggle state
       add_layer_prompt.rs
       submit_progress.rs
     widgets/      stateless render helpers: panel_block, centered_rect, spinner, glyphs()
@@ -106,14 +117,20 @@ actions grows. Review against them.
    requires a typed phrase. No action builds its own one-off modal.
 6. **User-facing error text goes through `tui::messages`**, so the same
    failure reads the same way from every action.
+7. **Key labels come from the keymap.** The footer and help overlay ask
+   `keymap::current()` for labels instead of hardcoding keys, so rebinding
+   a key in `config.toml` updates both. To add a key, add a `KeyIntent`,
+   its default binding and config name in `tui/keymap.rs`, a row in
+   `components/help.rs`, and, if it's among the most useful keys for a
+   panel, a hint in `stack_browser/chrome.rs`.
 
 ## Testing
 
 - **Domain modules** (`git/`, `stack/`, `doctor/`) are tested against
   `MockShell` with canned `(program, args)` responses. `stack/fixtures/`
   holds real `gh stack view --json` samples.
-- **The reducer** is tested through `App::settle(action, &mock)` in
-  `tui/app.rs`. It applies an action, runs the resulting effects against
+- **The reducer** is tested through `App::settle(action, &mock)` from
+  `tui/app/test_support.rs`, with each feature's tests beside its module. It applies an action, runs the resulting effects against
   the mock to completion, and returns what came back. This is the same
   effect path production uses; there is no separate test-only code path.
   `App::apply` applies an action without running its effects.

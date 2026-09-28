@@ -87,3 +87,45 @@ pub fn lower_layer_ref(stack: &StackSummary, layer_index: usize) -> String {
         .map(|layer| layer.branch.clone())
         .unwrap_or_else(|| stack.trunk.clone())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_fixtures::{layer, stack_summary};
+
+    #[test]
+    fn layer_detail_cache_key_includes_stack_and_branch() {
+        let stack = stack_summary("stack-a", 1);
+        let layer = layer("feature/layer-1");
+
+        assert_eq!(
+            layer_detail_cache_key(&stack, &layer),
+            "stack-a::feature/layer-1"
+        );
+    }
+
+    #[test]
+    fn layer_diff_cache_key_includes_stack_and_branch() {
+        let stack = stack_summary("stack-a", 1);
+        let layer = layer("feature/layer-1");
+
+        assert_eq!(
+            layer_diff_cache_key(&stack, &layer),
+            "stack-a::feature/layer-1::diff"
+        );
+    }
+
+    #[test]
+    fn lower_layer_ref_uses_trunk_for_bottom_layer() {
+        let stack = stack_summary("stack-a", 2);
+
+        assert_eq!(lower_layer_ref(&stack, 0), "main");
+    }
+
+    #[test]
+    fn lower_layer_ref_uses_previous_layer_for_higher_layers() {
+        let stack = stack_summary("stack-a", 2);
+
+        assert_eq!(lower_layer_ref(&stack, 1), "stack-a-layer-0");
+    }
+}

@@ -23,6 +23,41 @@ impl KeyBinding {
     }
 }
 
+/// Formats a binding the way it's written in `config.toml`, so
+/// `parse_key(&binding.to_string())` gives the binding back.
+impl std::fmt::Display for KeyBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (modifier, name) in [
+            (KeyModifiers::CONTROL, "ctrl+"),
+            (KeyModifiers::ALT, "alt+"),
+            (KeyModifiers::SHIFT, "shift+"),
+        ] {
+            if self.modifiers.contains(modifier) {
+                f.write_str(name)?;
+            }
+        }
+        match self.code {
+            KeyCode::Char(' ') => f.write_str("space"),
+            KeyCode::Char(c) => write!(f, "{c}"),
+            KeyCode::Enter => f.write_str("enter"),
+            KeyCode::Esc => f.write_str("esc"),
+            KeyCode::Tab => f.write_str("tab"),
+            KeyCode::BackTab => f.write_str("shift+tab"),
+            KeyCode::Backspace => f.write_str("backspace"),
+            KeyCode::Delete => f.write_str("delete"),
+            KeyCode::Up => f.write_str("up"),
+            KeyCode::Down => f.write_str("down"),
+            KeyCode::Left => f.write_str("left"),
+            KeyCode::Right => f.write_str("right"),
+            KeyCode::Home => f.write_str("home"),
+            KeyCode::End => f.write_str("end"),
+            KeyCode::PageUp => f.write_str("pageup"),
+            KeyCode::PageDown => f.write_str("pagedown"),
+            other => write!(f, "{other:?}"),
+        }
+    }
+}
+
 /// One key string or a list of them, as written in the config file.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
@@ -116,6 +151,32 @@ pub fn parse_key(input: &str) -> Result<KeyBinding, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_round_trips_through_parse_key() {
+        for input in [
+            "q",
+            "G",
+            "?",
+            "+",
+            "space",
+            "enter",
+            "esc",
+            "tab",
+            "shift+tab",
+            "ctrl+d",
+            "alt+x",
+            "up",
+            "down",
+            "pageup",
+            "pagedown",
+            "backspace",
+        ] {
+            let binding = parse_key(input).unwrap();
+            assert_eq!(binding.to_string(), input);
+            assert_eq!(parse_key(&binding.to_string()).unwrap(), binding);
+        }
+    }
 
     #[test]
     fn parses_common_keys() {
