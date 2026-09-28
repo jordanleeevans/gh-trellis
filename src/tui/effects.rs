@@ -16,8 +16,8 @@ use tokio::sync::mpsc;
 use crate::git;
 use crate::shell::Shell;
 use crate::stack::{
-    Layer, SubmitEvent, SubmitLayerOutcome, SubmitOptions, hydrate_layer_detail, list_stacks,
-    submit_stack,
+    Layer, SubmitEvent, SubmitLayerOutcome, SubmitOptions, UnstackScope, hydrate_layer_detail,
+    list_stacks, submit_stack, unstack_stack,
 };
 
 use super::action::Action;
@@ -101,6 +101,17 @@ impl Effects {
 
     pub(crate) fn checkout(&self, branch: String) {
         self.run_gh("checkout stack", vec!["stack", "checkout", &branch], true);
+    }
+
+    /// Runs `gh stack unstack` (with `--local` for [`UnstackScope::Local`]),
+    /// refreshing stacks on success and reporting failure via `SetError`.
+    pub(crate) fn unstack(&self, scope: UnstackScope) {
+        self.spawn(move |shell, repo, _| async move {
+            match unstack_stack(&shell, &repo, scope).await {
+                Ok(()) => vec![Action::RefreshStacks],
+                Err(error) => vec![Action::SetError(friendly_shell_error("unstack", &error))],
+            }
+        });
     }
 
     pub(crate) fn add_layer(&self, branch: String, message: Option<String>) {

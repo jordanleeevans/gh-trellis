@@ -9,6 +9,7 @@ mod pull_request;
 mod stack;
 mod submit;
 mod summary;
+mod unstack;
 
 pub use commit::CommitInfo;
 pub use detail::{
@@ -19,6 +20,7 @@ pub use pull_request::PullRequestRef;
 pub use stack::Stack;
 pub use submit::{SubmitEvent, SubmitLayerOutcome, SubmitOptions, submit_stack};
 pub use summary::{PrCounts, StackSummary, list_stacks};
+pub use unstack::{UnstackScope, unstack_stack};
 
 #[cfg(test)]
 mod tests {

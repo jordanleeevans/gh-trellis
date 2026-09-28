@@ -5,7 +5,7 @@
 //! [`super::effects`] turns the ones that need a process into background
 //! tasks whose results come back as further `Action`s.
 
-use crate::stack::{LayerDetail, StackSummary};
+use crate::stack::{LayerDetail, StackSummary, UnstackScope};
 
 use super::components::confirm::ConfirmModal;
 use super::state::submit_progress::LayerSubmitStatus;
@@ -38,6 +38,17 @@ pub enum Action {
         stack_index: usize,
         branch: String,
         message: Option<String>,
+    },
+    /// User intent: unstack the stack at `stack_index`. Shows a confirm modal
+    /// whose confirmation dispatches [`Action::RunUnstack`].
+    UnstackSelected {
+        stack_index: usize,
+        scope: UnstackScope,
+    },
+    /// Confirmed unstack; runs `gh stack unstack` via effects.
+    RunUnstack {
+        stack_index: usize,
+        scope: UnstackScope,
     },
     OpenPullRequest {
         stack_index: usize,

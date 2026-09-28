@@ -13,6 +13,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{ListState, Paragraph};
 
+use crate::stack::UnstackScope;
 use crate::theme::ui::THEME;
 use crate::tui::action::Action;
 use crate::tui::component::Component;
@@ -290,6 +291,22 @@ impl Component for StackBrowser {
                 }
                 Vec::new()
             }
+            Some(KeyIntent::Unstack) => selected_stack
+                .map(|stack_index| {
+                    vec![Action::UnstackSelected {
+                        stack_index,
+                        scope: UnstackScope::Local,
+                    }]
+                })
+                .unwrap_or_default(),
+            Some(KeyIntent::UnstackRemote) => selected_stack
+                .map(|stack_index| {
+                    vec![Action::UnstackSelected {
+                        stack_index,
+                        scope: UnstackScope::LocalAndRemote,
+                    }]
+                })
+                .unwrap_or_default(),
             Some(KeyIntent::ToggleDiff) => vec![Action::ToggleDiffView],
             Some(KeyIntent::Submit) => selected_stack
                 .map(|stack_index| vec![Action::SubmitStack { stack_index }])
@@ -1051,6 +1068,30 @@ mod tests {
         assert!(matches!(
             actions.as_slice(),
             [Action::SubmitStack { stack_index: 0 }]
+        ));
+    }
+
+    #[test]
+    fn handle_key_dispatches_unstack_scopes_for_selected_stack() {
+        let mut component = StackBrowser::new();
+        let mut state = app_state(vec![stack_summary("a", 2)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+
+        let local = component.handle_key(key(KeyCode::Char('D')), &state);
+        assert!(matches!(
+            local.as_slice(),
+            [Action::UnstackSelected {
+                stack_index: 0,
+                scope: UnstackScope::Local
+            }]
+        ));
+        let remote = component.handle_key(key(KeyCode::Char('U')), &state);
+        assert!(matches!(
+            remote.as_slice(),
+            [Action::UnstackSelected {
+                stack_index: 0,
+                scope: UnstackScope::LocalAndRemote
+            }]
         ));
     }
 
