@@ -3,7 +3,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Gauge, ListState, Paragraph, Wrap};
 
 use crate::stack::{Layer, LayerDetail, StackSummary};
 use crate::theme::glyphs::{GlyphSet, NERD_FONT};
@@ -15,6 +15,7 @@ use crate::tui::app::{
 
 use super::keymap::{KeyIntent, key_intent};
 use super::panel::panel_block;
+use super::submit_progress::{LayerSubmitStatus, SubmitLayerProgress, SubmitProgress};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActivePanel {
@@ -94,6 +95,137 @@ fn render(
         diff_scroll,
     );
     render_footer(frame, footer_area, state);
+
+    if let Some(progress) = &state.submit_progress {
+        render_submit_progress(frame, content_area, progress);
+    }
+}
+
+fn render_submit_progress(frame: &mut Frame, area: Rect, progress: &SubmitProgress) {
+    let area = centered_rect(area, 70, 60);
+
+    let failed = progress.failed_count();
+    let title = if !progress.finished {
+        " submitting stack ".to_string()
+    } else if failed > 0 {
+        format!(" submit finished — {failed} failed ")
+    } else {
+        " submit finished ".to_string()
+    };
+    let border_color = if failed > 0 {
+        THEME.colors.danger
+    } else if progress.finished {
+        THEME.colors.success
+    } else {
+        THEME.colors.primary
+    };
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(border_color));
+    let inner = block.inner(area);
+
+    frame.render_widget(Clear, area);
+    frame.render_widget(block, area);
+
+    let [gauge_area, list_area, footer_area] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ])
+    .areas(inner);
+
+    let gauge_color = if failed > 0 {
+        THEME.colors.danger
+    } else if progress.finished {
+        THEME.colors.success
+    } else {
+        THEME.colors.warning
+    };
+    let gauge = Gauge::default()
+        .gauge_style(Style::default().fg(gauge_color).bg(THEME.colors.surface))
+        .label(format!(
+            "{}/{} layers",
+            progress.completed_count(),
+            progress.total()
+        ))
+        .ratio(progress.ratio().clamp(0.0, 1.0));
+    frame.render_widget(gauge, gauge_area);
+
+    let lines = progress
+        .layers
+        .iter()
+        .map(submit_layer_line)
+        .collect::<Vec<_>>();
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), list_area);
+
+    let footer_text = if !progress.finished {
+        "submitting… please wait"
+    } else if failed > 0 {
+        "some layers failed — esc/q to dismiss"
+    } else {
+        "all layers submitted — esc/q to dismiss"
+    };
+    frame.render_widget(
+        Paragraph::new(footer_text).style(THEME.text.muted),
+        footer_area,
+    );
+}
+
+fn submit_layer_line(layer: &SubmitLayerProgress) -> Line<'static> {
+    let (glyph, style, text) = match &layer.status {
+        LayerSubmitStatus::Pending => (glyphs().pending, THEME.text.muted, "pending".to_string()),
+        LayerSubmitStatus::InProgress => (
+            glyphs().running,
+            Style::default().fg(THEME.colors.warning),
+            "pushing…".to_string(),
+        ),
+        LayerSubmitStatus::Pushed => (
+            glyphs().running,
+            Style::default().fg(THEME.colors.warning),
+            "pushed, syncing pull request…".to_string(),
+        ),
+        LayerSubmitStatus::PullRequestCreated { number } => (
+            glyphs().check,
+            Style::default().fg(THEME.colors.success),
+            format!("pushed, PR #{number} created"),
+        ),
+        LayerSubmitStatus::PullRequestUpdated { number } => (
+            glyphs().check,
+            Style::default().fg(THEME.colors.success),
+            format!("pushed, PR #{number} updated"),
+        ),
+        LayerSubmitStatus::Failed(message) => (
+            glyphs().cross,
+            Style::default().fg(THEME.colors.danger),
+            format!("failed: {message}"),
+        ),
+    };
+
+    Line::from(vec![
+        Span::styled(format!("{glyph} "), style),
+        Span::styled(format!("{:<28}", layer.branch), style),
+        Span::styled(text, style),
+    ])
+}
+
+/// A rect centered within `area`, `percent_x`/`percent_y` of its size.
+fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
+    let [_, vertical, _] = Layout::vertical([
+        Constraint::Percentage((100 - percent_y) / 2),
+        Constraint::Percentage(percent_y),
+        Constraint::Percentage((100 - percent_y) / 2),
+    ])
+    .areas(area);
+    let [_, horizontal, _] = Layout::horizontal([
+        Constraint::Percentage((100 - percent_x) / 2),
+        Constraint::Percentage(percent_x),
+        Constraint::Percentage((100 - percent_x) / 2),
+    ])
+    .areas(vertical);
+    horizontal
 }
 
 fn render_header(
@@ -186,12 +318,28 @@ fn footer_line(state: &AppState) -> Line<'static> {
             Span::raw(" checkout  "),
             Span::styled("gg/G ^u/^d", THEME.text.key),
             Span::raw(" diff jump  "),
+            Span::styled("s", THEME.text.key),
+            Span::raw(" submit  "),
+            Span::styled("a", THEME.text.key),
+            Span::raw(format!(
+                " auto:{}  ",
+                toggle_label(state.submit_options.auto)
+            )),
+            Span::styled("p", THEME.text.key),
+            Span::raw(format!(
+                " open:{}  ",
+                toggle_label(state.submit_options.open)
+            )),
             Span::styled("r", THEME.text.key),
             Span::raw(" refresh  "),
             Span::styled("q", THEME.text.key.fg(THEME.colors.danger)),
             Span::raw(" quit"),
         ])
     }
+}
+
+fn toggle_label(enabled: bool) -> &'static str {
+    if enabled { "on" } else { "off" }
 }
 
 fn render_stack(
@@ -601,6 +749,15 @@ impl Component for StackLayers {
     }
 
     fn handle_key(&mut self, key: KeyEvent, state: &AppState) -> Vec<Action> {
+        if state.submit_progress.is_some() {
+            return match key_intent(key) {
+                Some(KeyIntent::Back) | Some(KeyIntent::DismissMessage) => {
+                    vec![Action::DismissSubmit]
+                }
+                _ => Vec::new(),
+            };
+        }
+
         let selected_stack = selected_stack_index(state, self.stack_list_state.selected());
         let is_pending_g = self.pending_g;
         self.pending_g = false;
@@ -682,6 +839,11 @@ impl Component for StackLayers {
                 })
                 .unwrap_or_default(),
             Some(KeyIntent::ToggleDiff) => vec![Action::ToggleDiffView],
+            Some(KeyIntent::Submit) => selected_stack
+                .map(|stack_index| vec![Action::SubmitStack { stack_index }])
+                .unwrap_or_default(),
+            Some(KeyIntent::ToggleSubmitAuto) => vec![Action::ToggleSubmitAuto],
+            Some(KeyIntent::ToggleSubmitOpen) => vec![Action::ToggleSubmitOpen],
             Some(KeyIntent::DrillIn) => match self.active_panel {
                 ActivePanel::Stacks => vec![Action::FocusNextPanel],
                 ActivePanel::Layers => vec![Action::FocusNextPanel],
@@ -1285,6 +1447,7 @@ mod tests {
     use super::*;
     use crate::stack::{
         CheckSummary, LayerCommit, LayerDetail, PullRequestDetail, PullRequestRef, ReviewerState,
+        SubmitOptions,
     };
     use crate::test_fixtures::stack_summary;
     use crate::tui::layer_resource::LayerResourceCache;
@@ -1303,6 +1466,8 @@ mod tests {
             last_successful_stacks: Vec::new(),
             layer_details: LayerResourceCache::default(),
             layer_diffs: LayerResourceCache::default(),
+            submit_progress: None,
+            submit_options: SubmitOptions::default(),
             should_quit: false,
         }
     }
@@ -1710,5 +1875,87 @@ mod tests {
             .collect::<String>();
         assert!(text.contains("error:"));
         assert!(text.contains("dismiss"));
+    }
+
+    #[test]
+    fn footer_shows_submit_toggle_state() {
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        state.submit_options.auto = true;
+        let text = footer_line(&state)
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert!(text.contains("submit"));
+        assert!(text.contains("auto:on"));
+        assert!(text.contains("open:off"));
+    }
+
+    #[test]
+    fn handle_key_dispatches_submit_for_selected_stack() {
+        let mut component = StackLayers::new();
+        let mut state = app_state(vec![stack_summary("a", 2)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+
+        let actions = component.handle_key(key(KeyCode::Char('s')), &state);
+        assert!(matches!(
+            actions.as_slice(),
+            [Action::SubmitStack { stack_index: 0 }]
+        ));
+    }
+
+    #[test]
+    fn handle_key_toggles_submit_auto_and_open() {
+        let mut component = StackLayers::new();
+        let state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+
+        let auto = component.handle_key(key(KeyCode::Char('a')), &state);
+        assert!(matches!(auto.as_slice(), [Action::ToggleSubmitAuto]));
+
+        let open = component.handle_key(key(KeyCode::Char('p')), &state);
+        assert!(matches!(open.as_slice(), [Action::ToggleSubmitOpen]));
+    }
+
+    #[test]
+    fn handle_key_while_submitting_only_allows_dismissal() {
+        let mut component = StackLayers::new();
+        let mut state = app_state(vec![stack_summary("a", 2)], Screen::Layers(0));
+        state.submit_progress = Some(SubmitProgress::new(
+            0,
+            vec!["a-layer-0".to_string(), "a-layer-1".to_string()],
+        ));
+
+        let navigate = component.handle_key(key(KeyCode::Down), &state);
+        assert!(navigate.is_empty());
+
+        let dismiss = component.handle_key(key(KeyCode::Esc), &state);
+        assert!(matches!(dismiss.as_slice(), [Action::DismissSubmit]));
+
+        let dismiss_q = component.handle_key(key(KeyCode::Char('q')), &state);
+        assert!(matches!(dismiss_q.as_slice(), [Action::DismissSubmit]));
+    }
+
+    #[test]
+    fn submit_progress_reports_partial_failure_per_layer_in_rendered_lines() {
+        let mut progress =
+            SubmitProgress::new(0, vec!["a-layer-0".to_string(), "a-layer-1".to_string()]);
+        progress.set_status(0, LayerSubmitStatus::PullRequestCreated { number: 10 });
+        progress.set_status(1, LayerSubmitStatus::Failed("push rejected".to_string()));
+        progress.finished = true;
+
+        let lines = progress
+            .layers
+            .iter()
+            .map(submit_layer_line)
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
+        assert!(lines[0].contains("PR #10 created"));
+        assert!(lines[1].contains("failed: push rejected"));
     }
 }
