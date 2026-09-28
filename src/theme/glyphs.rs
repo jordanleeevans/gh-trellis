@@ -125,3 +125,19 @@ impl GlyphSet {
         }
     }
 }
+
+static NERD_FONTS_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Choose the glyph set returned by [`current`] (driven by config `nerd_fonts`).
+pub fn set_nerd_fonts(enabled: bool) {
+    NERD_FONTS_ENABLED.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The active glyph set.
+pub fn current() -> &'static GlyphSet {
+    if NERD_FONTS_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+        &NERD_FONT
+    } else {
+        &ASCII
+    }
+}

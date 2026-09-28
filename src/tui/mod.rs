@@ -3,7 +3,7 @@
 
 mod app;
 mod confirm;
-mod keymap;
+pub(crate) mod keymap;
 mod layer_resource;
 mod panel;
 mod stack_layers;
