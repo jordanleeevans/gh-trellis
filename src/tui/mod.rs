@@ -2,6 +2,7 @@
 //! list, layers, and layer details visible together, similar to LazyGit.
 
 mod app;
+mod confirm;
 mod keymap;
 mod layer_resource;
 mod panel;
