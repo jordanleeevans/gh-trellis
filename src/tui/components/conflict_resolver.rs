@@ -177,6 +177,7 @@ fn render_header(frame: &mut Frame, area: Rect, conflict: &RebaseConflict) {
     let branch = conflict.branch.as_deref().unwrap_or("a branch");
     let by = match conflict.driver {
         RebaseDriver::GhStack => "gh stack rebase",
+        RebaseDriver::GhStackModify => "gh stack modify",
         RebaseDriver::Git => "git rebase",
     };
     let text = format!(
@@ -288,6 +289,7 @@ fn guidance_lines(conflict: &RebaseConflict, keymap: &Keymap) -> Vec<Line<'stati
     }
     let abort = match conflict.driver {
         RebaseDriver::GhStack => "abort, restoring every branch in the stack",
+        RebaseDriver::GhStackModify => "abort, restoring the stack from before the modify",
         RebaseDriver::Git => "abort, restoring the branch",
     };
     lines.push(step(key(KeyIntent::RebaseAbort), abort.to_string()));
@@ -296,6 +298,9 @@ fn guidance_lines(conflict: &RebaseConflict, keymap: &Keymap) -> Vec<Line<'stati
         match conflict.driver {
             RebaseDriver::GhStack => {
                 "Continuing runs `gh stack rebase --continue`, which also rebases the layers above."
+            }
+            RebaseDriver::GhStackModify => {
+                "Continuing runs `gh stack modify --continue`, which finishes the restructure."
             }
             RebaseDriver::Git => {
                 "This rebase wasn't started by gh stack, so it's continued with plain git."

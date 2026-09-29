@@ -59,6 +59,11 @@ pub enum RebaseDriver {
     /// `gh stack rebase` left its cascade state: use `gh stack rebase
     /// --continue` / `--abort`, which also handle the remaining branches.
     GhStack,
+    /// `gh stack modify` stopped while applying a restructure: use `gh
+    /// stack modify --continue` / `--abort`, which finish or unwind the
+    /// whole restructure. Plain git would leave its state behind, and every
+    /// later `gh stack` command would refuse to run.
+    GhStackModify,
     /// A plain `git rebase` with no gh-stack state: use `git rebase
     /// --continue` / `--abort`.
     Git,
@@ -134,6 +139,10 @@ pub async fn continue_rebase(
             .run_long(repo, "gh", &["stack", "rebase", "--continue"])
             .await
             .map(drop),
+        RebaseDriver::GhStackModify => shell
+            .run_long(repo, "gh", &["stack", "modify", "--continue"])
+            .await
+            .map(drop),
         RebaseDriver::Git => git::rebase_continue(shell, repo).await,
     };
     settle(shell, repo, result).await
@@ -150,6 +159,12 @@ pub async fn abort_rebase(
         RebaseDriver::GhStack => {
             shell
                 .run_long(repo, "gh", &["stack", "rebase", "--abort"])
+                .await?;
+            Ok(())
+        }
+        RebaseDriver::GhStackModify => {
+            shell
+                .run_long(repo, "gh", &["stack", "modify", "--abort"])
                 .await?;
             Ok(())
         }
@@ -182,7 +197,11 @@ pub async fn interrupted_rebase(
     };
 
     Ok(Some(RebaseConflict {
-        driver: if state.gh_stack_state {
+        // A stopped modify also leaves git mid-rebase (and may leave rebase
+        // state), so its own state file decides first.
+        driver: if state.gh_stack_modify_state {
+            RebaseDriver::GhStackModify
+        } else if state.gh_stack_state {
             RebaseDriver::GhStack
         } else {
             RebaseDriver::Git
@@ -237,6 +256,7 @@ async fn settle(
 mod tests {
     use super::*;
     const GH_STACK_REBASE_STATE_FILE: &str = "gh-stack-rebase-state";
+    const GH_STACK_MODIFY_STATE_FILE: &str = "gh-stack-modify-state";
     use crate::shell::{MockShell, ProcessShell, ShellOutput};
     use crate::test_fixtures::{FIXTURE_FEATURE_TEXT, conflicting_rebase_repo};
 
@@ -267,6 +287,8 @@ mod tests {
         "rebase-apply",
         "--git-path",
         GH_STACK_REBASE_STATE_FILE,
+        "--git-path",
+        GH_STACK_MODIFY_STATE_FILE,
     ];
     const CONFLICTED_ARGS: &[&str] = &["diff", "--name-only", "--diff-filter=U", "-z"];
 
@@ -294,11 +316,69 @@ mod tests {
             self
         }
 
-        fn listing(&self) -> String {
-            ["rebase-merge", "rebase-apply", GH_STACK_REBASE_STATE_FILE]
-                .map(|name| self.dir.path().join(name).display().to_string())
-                .join("\n")
+        fn with_gh_stack_modify_state(self) -> Self {
+            std::fs::write(self.dir.path().join(GH_STACK_MODIFY_STATE_FILE), "{}").unwrap();
+            self
         }
+
+        fn listing(&self) -> String {
+            [
+                "rebase-merge",
+                "rebase-apply",
+                GH_STACK_REBASE_STATE_FILE,
+                GH_STACK_MODIFY_STATE_FILE,
+            ]
+            .map(|name| self.dir.path().join(name).display().to_string())
+            .join("\n")
+        }
+    }
+
+    /// A stopped `gh stack modify` also leaves git mid-rebase, and possibly
+    /// gh-stack rebase state; it must still be driven by `gh stack modify`,
+    /// or its state file is left behind and later gh-stack commands refuse.
+    #[tokio::test]
+    async fn a_stopped_modify_is_driven_by_gh_stack_modify() {
+        let dir = GitDir::new()
+            .mid_rebase("stack/layer-2")
+            .with_gh_stack_state()
+            .with_gh_stack_modify_state();
+        let shell = MockShell::new()
+            .when("git", GIT_PATH_ARGS, ok(&dir.listing()))
+            .when("git", CONFLICTED_ARGS, ok(""));
+
+        let conflict = interrupted_rebase(&shell, Path::new("."))
+            .await
+            .unwrap()
+            .expect("a stopped modify is an interrupted rebase");
+        assert_eq!(conflict.driver, RebaseDriver::GhStackModify);
+    }
+
+    #[tokio::test]
+    async fn modify_conflicts_continue_and_abort_through_gh_stack_modify() {
+        let shell = MockShell::new().when("gh", &["stack", "modify", "--abort"], ok(""));
+        abort_rebase(&shell, Path::new("."), RebaseDriver::GhStackModify)
+            .await
+            .unwrap();
+        assert_eq!(
+            shell.calls(),
+            [(
+                "gh".to_string(),
+                vec![
+                    "stack".to_string(),
+                    "modify".to_string(),
+                    "--abort".to_string()
+                ]
+            )]
+        );
+
+        let dir = GitDir::new();
+        let shell = MockShell::new()
+            .when("gh", &["stack", "modify", "--continue"], ok(""))
+            .when("git", GIT_PATH_ARGS, ok(&dir.listing()));
+        continue_rebase(&shell, Path::new("."), RebaseDriver::GhStackModify)
+            .await
+            .unwrap();
+        assert_eq!(shell.calls()[0].1, ["stack", "modify", "--continue"]);
     }
 
     #[test]
