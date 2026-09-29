@@ -26,7 +26,8 @@
 //!   stays open.
 //! - It can stop on a conflict. Its state lives in its own state file, not
 //!   just git's rebase state, and is finished with `gh stack modify
-//!   --continue` or `--abort`.
+//!   --continue` or `--abort`. Trellis's conflict view detects that state
+//!   file and drives those commands (`RebaseDriver::GhStackModify`).
 //!
 //! One `then` action only, so the follow-up is `RefreshStacks`: it reloads
 //! the stacks and also re-checks for a rebase left stopped (see
@@ -102,8 +103,8 @@ fn modify_modal(stack: &StackSummary, stack_index: usize) -> ConfirmModal {
          quitting there changes nothing. Applying rewrites local branches only: \
          nothing is pushed and no pull request changes until you submit \
          afterwards. A dropped branch's PR stays open. It needs a clean working \
-         tree. If it stops on a conflict, resolve it and run `gh stack modify \
-         --continue` (or `--abort`) in a shell.",
+         tree. If it stops on a conflict, trellis opens its conflict view, \
+         which continues or aborts through `gh stack modify`.",
         "Open gh stack modify",
         false,
     )

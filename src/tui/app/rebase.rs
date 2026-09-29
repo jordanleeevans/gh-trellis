@@ -345,6 +345,9 @@ fn abort_modal(conflict: &RebaseConflict) -> ConfirmModal {
         RebaseDriver::GhStack => "Runs `gh stack rebase --abort`: stops the rebase and resets \
              every branch in the stack to where it was before the rebase started."
             .to_string(),
+        RebaseDriver::GhStackModify => "Runs `gh stack modify --abort`: abandons the \
+             restructure and restores the stack to how it was before `gh stack modify`."
+            .to_string(),
         RebaseDriver::Git => format!(
             "Runs `git rebase --abort`: stops the rebase and puts {} back where it was.",
             conflict.branch.as_deref().unwrap_or("the branch")

@@ -21,6 +21,10 @@ use crate::shell::{Shell, ShellError};
 /// --continue` and `--abort` refuse to run without it.
 pub const GH_STACK_REBASE_STATE_FILE: &str = "gh-stack-rebase-state";
 
+/// Written by `gh stack modify` while it applies a restructure, and kept
+/// when it stops on a conflict (`internal/modify/state.go` in gh-stack).
+pub const GH_STACK_MODIFY_STATE_FILE: &str = "gh-stack-modify-state";
+
 /// What the git dir says about an in-progress rebase.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RebaseState {
@@ -29,6 +33,9 @@ pub struct RebaseState {
     /// `gh stack rebase` left its cascade state behind, so the rebase has
     /// to be continued or aborted through `gh stack`.
     pub gh_stack_state: bool,
+    /// `gh stack modify` stopped partway (usually on a conflict), so it has
+    /// to be continued or aborted through `gh stack modify`.
+    pub gh_stack_modify_state: bool,
     /// The branch being rebased, from `head-name` in the rebase dir
     /// (`refs/heads/` stripped), when git recorded one.
     pub branch: Option<String>,
@@ -37,7 +44,7 @@ pub struct RebaseState {
 impl RebaseState {
     /// Whether anything is left to continue or abort.
     pub fn is_interrupted(&self) -> bool {
-        self.in_progress || self.gh_stack_state
+        self.in_progress || self.gh_stack_state || self.gh_stack_modify_state
     }
 }
 
@@ -64,6 +71,8 @@ pub async fn rebase_state(shell: &impl Shell, repo: &Path) -> Result<RebaseState
                 "rebase-apply",
                 "--git-path",
                 GH_STACK_REBASE_STATE_FILE,
+                "--git-path",
+                GH_STACK_MODIFY_STATE_FILE,
             ],
         )
         .await?;
@@ -72,7 +81,13 @@ pub async fn rebase_state(shell: &impl Shell, repo: &Path) -> Result<RebaseState
         .lines()
         .map(|line| repo.join(line.trim()))
         .collect();
-    let [rebase_merge, rebase_apply, gh_stack_state] = paths.as_slice() else {
+    let [
+        rebase_merge,
+        rebase_apply,
+        gh_stack_state,
+        gh_stack_modify_state,
+    ] = paths.as_slice()
+    else {
         return Err(ShellError::UnexpectedOutput(format!(
             "git rev-parse --git-path printed {:?}",
             output.stdout
@@ -90,6 +105,7 @@ pub async fn rebase_state(shell: &impl Shell, repo: &Path) -> Result<RebaseState
     Ok(RebaseState {
         in_progress: dirs.iter().any(|dir| dir.is_dir()),
         gh_stack_state: gh_stack_state.is_file(),
+        gh_stack_modify_state: gh_stack_modify_state.is_file(),
         branch,
     })
 }
@@ -257,6 +273,8 @@ mod tests {
         "rebase-apply",
         "--git-path",
         GH_STACK_REBASE_STATE_FILE,
+        "--git-path",
+        GH_STACK_MODIFY_STATE_FILE,
     ];
 
     #[tokio::test]
@@ -267,10 +285,11 @@ mod tests {
         std::fs::write(merge.join("head-name"), "refs/heads/stack/layer-2\n").unwrap();
         std::fs::write(git_dir.path().join(GH_STACK_REBASE_STATE_FILE), "{}").unwrap();
         let listing = format!(
-            "{}\n{}\n{}\n",
+            "{}\n{}\n{}\n{}\n",
             merge.display(),
             git_dir.path().join("rebase-apply").display(),
-            git_dir.path().join(GH_STACK_REBASE_STATE_FILE).display()
+            git_dir.path().join(GH_STACK_REBASE_STATE_FILE).display(),
+            git_dir.path().join(GH_STACK_MODIFY_STATE_FILE).display()
         );
         let shell = MockShell::new().when("git", GIT_PATH_ARGS, stdout(&listing));
 
@@ -281,6 +300,7 @@ mod tests {
             RebaseState {
                 in_progress: true,
                 gh_stack_state: true,
+                gh_stack_modify_state: false,
                 branch: Some("stack/layer-2".to_string()),
             }
         );
@@ -290,9 +310,14 @@ mod tests {
     #[tokio::test]
     async fn rebase_state_is_clear_when_no_rebase_files_exist() {
         let git_dir = tempfile::tempdir().unwrap();
-        let listing = ["rebase-merge", "rebase-apply", GH_STACK_REBASE_STATE_FILE]
-            .map(|name| git_dir.path().join(name).display().to_string())
-            .join("\n");
+        let listing = [
+            "rebase-merge",
+            "rebase-apply",
+            GH_STACK_REBASE_STATE_FILE,
+            GH_STACK_MODIFY_STATE_FILE,
+        ]
+        .map(|name| git_dir.path().join(name).display().to_string())
+        .join("\n");
         let shell = MockShell::new().when("git", GIT_PATH_ARGS, stdout(&listing));
 
         let state = rebase_state(&shell, Path::new(".")).await.unwrap();
