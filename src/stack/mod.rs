@@ -5,6 +5,7 @@ mod commit;
 mod detail;
 mod layer;
 pub mod local;
+mod merge;
 mod pull_request;
 mod stack;
 mod submit;
@@ -17,6 +18,10 @@ pub use detail::{
     CheckSummary, LayerCommit, LayerDetail, PullRequestDetail, ReviewerState, hydrate_layer_detail,
 };
 pub use layer::Layer;
+pub use merge::{
+    MergeCandidate, MergeFailure, MergeMethod, MergeOutcome, MergePlan, MergeRefusal, merge_plan,
+    merge_stack,
+};
 pub use pull_request::PullRequestRef;
 pub use stack::Stack;
 pub use submit::{SubmitEvent, SubmitLayerOutcome, SubmitOptions, submit_stack};

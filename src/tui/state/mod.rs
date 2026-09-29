@@ -3,7 +3,7 @@
 pub(crate) mod layer_resource;
 pub(crate) mod submit_progress;
 
-use crate::stack::{Layer, LayerDetail, StackSummary, SubmitOptions, SyncOptions};
+use crate::stack::{Layer, LayerDetail, MergeMethod, StackSummary, SubmitOptions, SyncOptions};
 
 use super::components::confirm::ConfirmModal;
 use layer_resource::LayerResourceCache;
@@ -42,6 +42,10 @@ pub struct AppState {
     pub sync_options: SyncOptions,
     /// A `gh stack sync` is running in the background.
     pub sync_in_flight: bool,
+    /// The method the next `gh stack merge` will use.
+    pub merge_method: MergeMethod,
+    /// A `gh stack merge` is running in the background.
+    pub merge_in_flight: bool,
     pub should_quit: bool,
 }
 
@@ -64,6 +68,8 @@ impl Default for AppState {
             submit_options: SubmitOptions::default(),
             sync_options: SyncOptions::default(),
             sync_in_flight: false,
+            merge_method: MergeMethod::default(),
+            merge_in_flight: false,
             should_quit: false,
         }
     }

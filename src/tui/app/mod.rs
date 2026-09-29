@@ -17,6 +17,7 @@ use crate::shell::Shell;
 mod auto_refresh;
 mod feedback;
 mod layers;
+mod merge;
 mod refresh;
 mod stack_ops;
 mod submit;
@@ -159,6 +160,10 @@ impl App {
             | Action::SyncStarted { .. }
             | Action::SyncFinished { .. }
             | Action::ToggleSyncPrune => self.reduce_sync(action, effects),
+            Action::MergeStack { .. }
+            | Action::CycleMergeMethod
+            | Action::MergeStarted { .. }
+            | Action::MergeFinished { .. } => self.reduce_merge(action, effects),
             // View-only actions: handled by the components' `update`.
             Action::SelectNext
             | Action::SelectPrevious

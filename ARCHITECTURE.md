@@ -23,7 +23,8 @@ src/
   shell/          Shell trait, ProcessShell, MockShell (process I/O only)
   git/            typed wrappers over plain `git` (diff, log, branch, rebase, status)
   stack/          gh-stack domain: models (Stack, Layer, PullRequestRef, StackSummary...)
-                  and operations (list_stacks, hydrate_layer_detail, submit_stack...)
+                  and operations (list_stacks, hydrate_layer_detail, submit_stack,
+                  merge_plan/merge_stack...)
   theme/          palette, text styles, glyph sets (Nerd Font / ASCII)
   tui/
     mod.rs        exposes run()
@@ -33,6 +34,7 @@ src/
       refresh.rs     stack list refresh      layers.rs    layer detail/diff loading
       stack_ops.rs   checkout, add layer, open PR, unstack
       submit.rs      submit + progress       sync.rs      gh stack sync
+      merge.rs       gh stack merge (danger confirm, re-check, outcome)
       feedback.rs    errors, status, confirm modal
       test_support.rs  reducer test harness (settle/apply/dispatch_now)
     action.rs     Action enum
@@ -55,6 +57,7 @@ src/
         chrome.rs      header, and a footer of hints for the focused panel,
                        fitted to the terminal width
       confirm.rs       shared ConfirmModal for every destructive action
+      sync_confirm.rs / merge_confirm.rs  modal bodies for sync and merge
       help.rs          `?` overlay listing every binding and toggle state
       add_layer_prompt.rs
       submit_progress.rs

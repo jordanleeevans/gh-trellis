@@ -44,7 +44,9 @@ also using your bindings.
 Actions: `move_down`, `move_up`, `focus_next`, `focus_previous`, `drill_in`,
 `back` (alias `quit`), `refresh`, `checkout`, `add_layer`, `unstack`, `unstack_remote`, `toggle_diff`,
 `submit`, `toggle_submit_auto`, `toggle_submit_open`, `sync` (default `S`),
-`toggle_sync_prune` (default `P`), `help`, `page_down`,
+`toggle_sync_prune` (default `P`), `merge` (default `M`; merges the
+checked-out stack after a typed confirmation), `cycle_merge_method` (default
+`m`; merge, squash or rebase), `help`, `page_down`,
 `page_up`, `half_page_down`, `half_page_up`, `end`, `open_external`,
 `dismiss_message`.
 

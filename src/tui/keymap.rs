@@ -22,6 +22,8 @@ pub(crate) enum KeyIntent {
     ToggleSubmitOpen,
     Sync,
     ToggleSyncPrune,
+    Merge,
+    CycleMergeMethod,
     Help,
     PageDown,
     PageUp,
@@ -62,6 +64,8 @@ const INTENT_NAMES: &[(&str, KeyIntent)] = &[
     ("toggle_submit_open", KeyIntent::ToggleSubmitOpen),
     ("sync", KeyIntent::Sync),
     ("toggle_sync_prune", KeyIntent::ToggleSyncPrune),
+    ("merge", KeyIntent::Merge),
+    ("cycle_merge_method", KeyIntent::CycleMergeMethod),
     ("help", KeyIntent::Help),
     ("page_down", KeyIntent::PageDown),
     ("page_up", KeyIntent::PageUp),
@@ -100,6 +104,8 @@ fn default_bindings() -> Vec<(KeyBinding, KeyIntent)> {
         (ch('p'), ToggleSubmitOpen),
         (ch('S'), Sync),
         (ch('P'), ToggleSyncPrune),
+        (ch('M'), Merge),
+        (ch('m'), CycleMergeMethod),
         (ch('?'), Help),
         (bind(KeyCode::PageDown), PageDown),
         (bind(KeyCode::PageUp), PageUp),
@@ -291,6 +297,15 @@ mod tests {
         assert_eq!(
             key_intent(key(KeyCode::Char('P'))),
             Some(KeyIntent::ToggleSyncPrune)
+        );
+        assert_eq!(key_intent(key(KeyCode::Char('M'))), Some(KeyIntent::Merge));
+        assert_eq!(
+            key_intent(KeyEvent::new(KeyCode::Char('M'), KeyModifiers::SHIFT)),
+            Some(KeyIntent::Merge)
+        );
+        assert_eq!(
+            key_intent(key(KeyCode::Char('m'))),
+            Some(KeyIntent::CycleMergeMethod)
         );
     }
 

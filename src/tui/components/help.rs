@@ -2,7 +2,8 @@
 //!
 //! Generated from the live [`Keymap`], so rebinding a key in `config.toml`
 //! changes what's shown here, and it's where toggle states (submit
-//! `--auto`/`--open`, sync `--prune`) are shown instead of the footer.
+//! `--auto`/`--open`, sync `--prune`, merge method) are shown instead of
+//! the footer.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -77,6 +78,11 @@ pub(crate) fn sections(keymap: &Keymap, state: &AppState) -> Vec<HelpSection> {
                 row(
                     ToggleSyncPrune,
                     format!("sync --prune: {}", on_off(state.sync_options.prune)),
+                ),
+                row(Merge, "merge stack (irreversible)".to_string()),
+                row(
+                    CycleMergeMethod,
+                    format!("merge method: {}", state.merge_method.name()),
                 ),
                 row(Unstack, "unstack (local only)".to_string()),
                 row(UnstackRemote, "unstack on GitHub".to_string()),
@@ -224,6 +230,13 @@ mod tests {
         assert_eq!(find(&sections, "submit --auto").1, "submit --auto: on");
         assert_eq!(find(&sections, "submit --open").1, "submit --open: off");
         assert_eq!(find(&sections, "sync --prune").1, "sync --prune: off");
+        assert_eq!(find(&sections, "merge method").1, "merge method: merge");
+        assert_eq!(find(&sections, "merge stack").0, "M");
+        assert_eq!(find(&sections, "merge method").0, "m");
+
+        state.merge_method = crate::stack::MergeMethod::Squash;
+        let sections = super::sections(&Keymap::default_keymap(), &state);
+        assert_eq!(find(&sections, "merge method").1, "merge method: squash");
     }
 
     #[test]

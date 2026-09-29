@@ -155,6 +155,10 @@ impl StackBrowser {
                 .map(|stack_index| vec![Action::SyncStack { stack_index }])
                 .unwrap_or_default(),
             Some(KeyIntent::ToggleSyncPrune) => vec![Action::ToggleSyncPrune],
+            Some(KeyIntent::Merge) => selected_stack
+                .map(|stack_index| vec![Action::MergeStack { stack_index }])
+                .unwrap_or_default(),
+            Some(KeyIntent::CycleMergeMethod) => vec![Action::CycleMergeMethod],
             Some(KeyIntent::DrillIn) => match self.active_panel {
                 ActivePanel::Stacks => vec![Action::FocusNextPanel],
                 ActivePanel::Layers => vec![Action::FocusNextPanel],
@@ -581,6 +585,37 @@ mod tests {
 
         let prune = component.handle_key(key(KeyCode::Char('P')), &state);
         assert!(matches!(prune.as_slice(), [Action::ToggleSyncPrune]));
+    }
+
+    #[test]
+    fn handle_key_dispatches_merge_for_selected_stack_and_cycles_the_method() {
+        let mut component = StackBrowser::new();
+        let mut state = app_state(
+            vec![stack_summary("a", 2), stack_summary("b", 1)],
+            Screen::Layers(1),
+        );
+        component.update(&Action::ShowLayers(1), &mut state);
+
+        let merge = component.handle_key(key(KeyCode::Char('M')), &state);
+        assert!(matches!(
+            merge.as_slice(),
+            [Action::MergeStack { stack_index: 1 }]
+        ));
+
+        let cycle = component.handle_key(key(KeyCode::Char('m')), &state);
+        assert!(matches!(cycle.as_slice(), [Action::CycleMergeMethod]));
+    }
+
+    #[test]
+    fn merge_key_does_nothing_without_a_selected_stack() {
+        let mut component = StackBrowser::new();
+        let state = app_state(Vec::new(), Screen::List);
+
+        assert!(
+            component
+                .handle_key(key(KeyCode::Char('M')), &state)
+                .is_empty()
+        );
     }
 
     #[test]

@@ -199,8 +199,10 @@ pub(super) fn footer_line(
         spans.extend(dismiss());
         return Line::from(spans);
     }
-    if state.sync_in_flight || state.refresh_in_flight {
-        let message = if state.sync_in_flight {
+    if state.merge_in_flight || state.sync_in_flight || state.refresh_in_flight {
+        let message = if state.merge_in_flight {
+            "Merging stack on GitHub (this can take a few minutes)"
+        } else if state.sync_in_flight {
             "Syncing stack (fetch, rebase, push)"
         } else {
             "Refreshing stacks in background"
@@ -385,6 +387,13 @@ mod tests {
             footer(&state, ActivePanel::Layers, 120)
                 .contains("» selected layer has no pull request")
         );
+    }
+
+    #[test]
+    fn footer_shows_merge_progress() {
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        state.merge_in_flight = true;
+        assert!(footer(&state, ActivePanel::Stacks, 120).contains("Merging stack on GitHub"));
     }
 
     #[test]

@@ -44,7 +44,7 @@ impl App {
                 }
             }
             Action::Tick => {
-                if self.state.refresh_in_flight {
+                if self.state.refresh_in_flight || self.state.merge_in_flight {
                     self.state.refresh_spinner_frame =
                         self.state.refresh_spinner_frame.wrapping_add(1);
                 }
