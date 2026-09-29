@@ -42,6 +42,9 @@ impl RebaseState {
 }
 
 /// Rebases the current branch of the repository at `repo` onto `onto`.
+/// Only tests use this, to put fixture repos mid-rebase; the app rebases
+/// through `gh stack rebase` (see `crate::stack`).
+#[cfg(test)]
 pub async fn rebase(shell: &impl Shell, repo: &Path, onto: &str) -> Result<String, ShellError> {
     let output = shell.run(repo, "git", &["rebase", onto]).await?;
     Ok(output.stdout)

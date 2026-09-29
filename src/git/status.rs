@@ -3,6 +3,10 @@ use std::path::Path;
 use crate::shell::{Shell, ShellError};
 
 /// Returns the short-format `git status` output for the repository at `repo`.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "for the status/staging panel (#24)")
+)]
 pub async fn status(shell: &impl Shell, repo: &Path) -> Result<String, ShellError> {
     let output = shell.run(repo, "git", &["status", "--short"]).await?;
     Ok(output.stdout)

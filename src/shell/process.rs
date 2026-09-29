@@ -35,6 +35,10 @@ const LONG_COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// An event emitted while a [`RunningCommand`] executes.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "streaming output, for progress indicators (#35)")
+)]
 pub enum ShellEvent {
     /// A line written to the process's stdout.
     Stdout(String),
@@ -45,6 +49,10 @@ pub enum ShellEvent {
 }
 
 /// A handle to a command that was started with [`ProcessShell::stream`].
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "streaming output, for progress indicators (#35)")
+)]
 pub struct RunningCommand {
     /// Receives [`ShellEvent`]s as the command produces output and exits.
     pub events: mpsc::UnboundedReceiver<ShellEvent>,
@@ -123,6 +131,10 @@ impl ProcessShell {
     }
     /// Spawns `program` and streams its stdout/stderr lines as they arrive,
     /// rather than waiting for it to finish like [`Shell::run`].
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "streaming output, for progress indicators (#35)")
+    )]
     pub fn stream(
         &self,
         cwd: &Path,

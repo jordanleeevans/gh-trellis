@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::shell::{Shell, ShellError};
 
 /// Returns the `git branch --list` output for the repository at `repo`.
+#[cfg_attr(not(test), expect(dead_code, reason = "for the branch panel (#26)"))]
 pub async fn branch(shell: &impl Shell, repo: &Path) -> Result<String, ShellError> {
     let output = shell.run(repo, "git", &["branch", "--list"]).await?;
     Ok(output.stdout)

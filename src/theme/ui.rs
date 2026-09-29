@@ -9,6 +9,7 @@ pub struct Theme {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[expect(dead_code, reason = "part of the palette for theming (#33)")]
 pub struct Colors {
     pub primary: Color,
     pub secondary: Color,
@@ -94,6 +95,7 @@ impl Theme {
         Style::new().fg(self.colors.primary)
     }
 
+    #[expect(dead_code, reason = "part of the palette for theming (#33)")]
     pub fn tertiary_border(self) -> Style {
         Style::new().fg(self.colors.tertiary)
     }
