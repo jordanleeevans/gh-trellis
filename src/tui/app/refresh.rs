@@ -13,9 +13,14 @@ impl App {
         match action {
             Action::RefreshStacks => {
                 self.state.refresh_request_id += 1;
-                vec![Action::StackRefreshStarted {
-                    request_id: self.state.refresh_request_id,
-                }]
+                // A refresh (including the one on startup) also looks for a
+                // rebase stopped on a conflict, e.g. from an earlier session.
+                vec![
+                    Action::StackRefreshStarted {
+                        request_id: self.state.refresh_request_id,
+                    },
+                    Action::LoadRebaseState,
+                ]
             }
             Action::StackRefreshStarted { request_id } => {
                 self.state.refresh_in_flight = true;
@@ -44,7 +49,10 @@ impl App {
                 }
             }
             Action::Tick => {
-                if self.state.refresh_in_flight {
+                if self.state.refresh_in_flight
+                    || self.state.sync_in_flight
+                    || self.state.rebase_in_flight.is_some()
+                {
                     self.state.refresh_spinner_frame =
                         self.state.refresh_spinner_frame.wrapping_add(1);
                 }
@@ -106,7 +114,10 @@ mod tests {
 
         assert!(matches!(
             follow_ups.as_slice(),
-            [Action::StackRefreshStarted { request_id: 1 }]
+            [
+                Action::StackRefreshStarted { request_id: 1 },
+                Action::LoadRebaseState
+            ]
         ));
         assert!(!app.state.refresh_in_flight);
     }

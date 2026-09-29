@@ -59,10 +59,12 @@ impl App {
                 match result {
                     Err(message) => vec![Action::SetError(message.clone())],
                     Ok(SyncOutcome::Conflict) => vec![
-                        Action::SetError(
-                            "sync hit a rebase conflict; your branches were restored. Run `gh stack rebase` in a terminal to resolve it"
-                                .to_string(),
-                        ),
+                        Action::SetError(format!(
+                            "sync hit a rebase conflict; your branches were restored. Rebase the stack ({}) to resolve it, then sync again",
+                            crate::tui::keymap::current()
+                                .short_label(crate::tui::keymap::KeyIntent::RebaseStack)
+                                .unwrap_or_else(|| "unbound".to_string())
+                        )),
                         Action::RefreshStacks,
                     ],
                     Ok(SyncOutcome::Diverged) => vec![

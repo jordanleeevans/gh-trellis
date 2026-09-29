@@ -22,6 +22,12 @@ pub(crate) enum KeyIntent {
     ToggleSubmitOpen,
     Sync,
     ToggleSyncPrune,
+    RebaseStack,
+    RebaseUpstack,
+    ConflictEdit,
+    ConflictMarkResolved,
+    RebaseContinue,
+    RebaseAbort,
     Help,
     PageDown,
     PageUp,
@@ -62,6 +68,12 @@ const INTENT_NAMES: &[(&str, KeyIntent)] = &[
     ("toggle_submit_open", KeyIntent::ToggleSubmitOpen),
     ("sync", KeyIntent::Sync),
     ("toggle_sync_prune", KeyIntent::ToggleSyncPrune),
+    ("rebase_stack", KeyIntent::RebaseStack),
+    ("rebase_upstack", KeyIntent::RebaseUpstack),
+    ("conflict_edit", KeyIntent::ConflictEdit),
+    ("conflict_mark_resolved", KeyIntent::ConflictMarkResolved),
+    ("rebase_continue", KeyIntent::RebaseContinue),
+    ("rebase_abort", KeyIntent::RebaseAbort),
     ("help", KeyIntent::Help),
     ("page_down", KeyIntent::PageDown),
     ("page_up", KeyIntent::PageUp),
@@ -100,6 +112,12 @@ fn default_bindings() -> Vec<(KeyBinding, KeyIntent)> {
         (ch('p'), ToggleSubmitOpen),
         (ch('S'), Sync),
         (ch('P'), ToggleSyncPrune),
+        (ch('R'), RebaseStack),
+        (ch('u'), RebaseUpstack),
+        (ch('e'), ConflictEdit),
+        (ch('m'), ConflictMarkResolved),
+        (ch('C'), RebaseContinue),
+        (ch('A'), RebaseAbort),
         (ch('?'), Help),
         (bind(KeyCode::PageDown), PageDown),
         (bind(KeyCode::PageUp), PageUp),
@@ -292,6 +310,27 @@ mod tests {
             key_intent(key(KeyCode::Char('P'))),
             Some(KeyIntent::ToggleSyncPrune)
         );
+        for (c, intent) in [
+            ('R', KeyIntent::RebaseStack),
+            ('u', KeyIntent::RebaseUpstack),
+            ('e', KeyIntent::ConflictEdit),
+            ('m', KeyIntent::ConflictMarkResolved),
+            ('C', KeyIntent::RebaseContinue),
+            ('A', KeyIntent::RebaseAbort),
+        ] {
+            assert_eq!(key_intent(key(KeyCode::Char(c))), Some(intent), "{c}");
+        }
+    }
+
+    #[test]
+    fn every_intent_has_a_config_name_and_a_default_key() {
+        let defaults = Keymap::default_keymap();
+        for (_, intent) in INTENT_NAMES {
+            assert!(
+                !defaults.bindings_for(*intent).is_empty(),
+                "{intent:?} has no default key"
+            );
+        }
     }
 
     #[test]

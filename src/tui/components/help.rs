@@ -3,6 +3,9 @@
 //! Generated from the live [`Keymap`], so rebinding a key in `config.toml`
 //! changes what's shown here, and it's where toggle states (submit
 //! `--auto`/`--open`, sync `--prune`) are shown instead of the footer.
+//!
+//! While the conflict view is open it lists that view's keys instead, since
+//! the browser's panels aren't on screen.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -46,6 +49,30 @@ pub(crate) fn sections(keymap: &Keymap, state: &AppState) -> Vec<HelpSection> {
     diff.push(("gg".to_string(), "top".to_string()));
     diff.push(row(End, "bottom".to_string()));
 
+    let general = HelpSection {
+        title: "General",
+        rows: rows(&[
+            (DismissMessage, "dismiss error or notice"),
+            (Help, "toggle this help"),
+        ]),
+    };
+
+    if state.conflict.is_some() {
+        return vec![
+            HelpSection {
+                title: "Navigation",
+                rows: rows(&[
+                    (MoveDown, "next file"),
+                    (MoveUp, "previous file"),
+                    (Refresh, "reload conflicted files"),
+                    (Back, "quit (the rebase stays stopped)"),
+                ]),
+            },
+            conflict_section(keymap),
+            general,
+        ];
+    }
+
     vec![
         HelpSection {
             title: "Navigation",
@@ -78,6 +105,13 @@ pub(crate) fn sections(keymap: &Keymap, state: &AppState) -> Vec<HelpSection> {
                     ToggleSyncPrune,
                     format!("sync --prune: {}", on_off(state.sync_options.prune)),
                 ),
+                row(
+                    RebaseStack,
+                    format!(
+                        "rebase stack ({} from checked-out layer up)",
+                        keymap.all_labels(RebaseUpstack)
+                    ),
+                ),
                 row(Unstack, "unstack (local only)".to_string()),
                 row(UnstackRemote, "unstack on GitHub".to_string()),
             ],
@@ -93,14 +127,25 @@ pub(crate) fn sections(keymap: &Keymap, state: &AppState) -> Vec<HelpSection> {
             title: "Diff",
             rows: diff,
         },
-        HelpSection {
-            title: "General",
-            rows: rows(&[
-                (DismissMessage, "dismiss error or notice"),
-                (Help, "toggle this help"),
-            ]),
-        },
+        general,
     ]
+}
+
+/// The conflict view's own keys.
+fn conflict_section(keymap: &Keymap) -> HelpSection {
+    use KeyIntent::*;
+    HelpSection {
+        title: "Rebase conflict",
+        rows: [
+            (ConflictEdit, "open file in $EDITOR"),
+            (ConflictMarkResolved, "mark file resolved (git add)"),
+            (RebaseContinue, "continue rebase"),
+            (RebaseAbort, "abort rebase, restore branches"),
+        ]
+        .iter()
+        .map(|(intent, description)| (keymap.all_labels(*intent), description.to_string()))
+        .collect(),
+    }
 }
 
 fn section_lines(section: &HelpSection) -> Vec<Line<'static>> {
@@ -214,6 +259,27 @@ mod tests {
         assert_eq!(find(&sections, "move down").0, "down/j");
         assert_eq!(find(&sections, "half page down").0, "ctrl+d");
         assert_eq!(find(&sections, "unstack on GitHub").0, "U");
+    }
+
+    #[test]
+    fn lists_rebase_keys_and_the_conflict_view_keys_while_it_is_open() {
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        let browsing = sections(&Keymap::default_keymap(), &state);
+        assert_eq!(find(&browsing, "rebase stack").0, "R");
+        assert!(find(&browsing, "rebase stack").1.contains("u from"));
+        assert!(browsing.iter().all(|s| s.title != "Rebase conflict"));
+
+        state.conflict = Some(crate::stack::RebaseConflict {
+            driver: crate::stack::RebaseDriver::Git,
+            branch: None,
+            files: Vec::new(),
+        });
+        let resolving = sections(&Keymap::default_keymap(), &state);
+        assert_eq!(find(&resolving, "open file").0, "e");
+        assert_eq!(find(&resolving, "mark file resolved").0, "m");
+        assert_eq!(find(&resolving, "continue rebase").0, "C");
+        assert_eq!(find(&resolving, "abort rebase").0, "A");
+        assert!(resolving.iter().all(|s| s.title != "Stack"));
     }
 
     #[test]

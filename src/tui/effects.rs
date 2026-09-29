@@ -16,8 +16,9 @@ use tokio::sync::mpsc;
 use crate::git;
 use crate::shell::Shell;
 use crate::stack::{
-    Layer, SubmitEvent, SubmitLayerOutcome, SubmitOptions, SyncOptions, UnstackScope,
-    hydrate_layer_detail, list_stacks, submit_stack, sync_stack, unstack_stack,
+    Layer, RebaseDriver, RebaseScope, SubmitEvent, SubmitLayerOutcome, SubmitOptions, SyncOptions,
+    UnstackScope, abort_rebase, continue_rebase, hydrate_layer_detail, interrupted_rebase,
+    list_stacks, rebase_stack, stage_resolved, submit_stack, sync_stack, unstack_stack,
 };
 
 use super::action::Action;
@@ -183,6 +184,59 @@ impl Effects {
                 .await
                 .map_err(|error| friendly_shell_error("sync stack", &error));
             vec![Action::SyncFinished { result }]
+        });
+    }
+
+    /// Runs `gh stack rebase` (with `run_long`: a cascade can take well over
+    /// the default timeout) on the checked-out stack, then sends
+    /// [`Action::RebaseFinished`].
+    pub(crate) fn rebase_stack(&self, remote: String, scope: RebaseScope) {
+        self.spawn(move |shell, repo, _| async move {
+            let result = rebase_stack(&shell, &repo, &remote, scope)
+                .await
+                .map_err(|error| friendly_shell_error("rebase stack", &error));
+            vec![Action::RebaseFinished { result }]
+        });
+    }
+
+    /// Continues an interrupted rebase, then sends [`Action::RebaseFinished`].
+    pub(crate) fn continue_rebase(&self, driver: RebaseDriver) {
+        self.spawn(move |shell, repo, _| async move {
+            let result = continue_rebase(&shell, &repo, driver)
+                .await
+                .map_err(|error| friendly_shell_error("continue rebase", &error));
+            vec![Action::RebaseFinished { result }]
+        });
+    }
+
+    /// Aborts an interrupted rebase, then sends [`Action::RebaseAborted`].
+    pub(crate) fn abort_rebase(&self, driver: RebaseDriver) {
+        self.spawn(move |shell, repo, _| async move {
+            let result = abort_rebase(&shell, &repo, driver)
+                .await
+                .map_err(|error| friendly_shell_error("abort rebase", &error));
+            vec![Action::RebaseAborted { result }]
+        });
+    }
+
+    /// Asks git whether a rebase is stopped, sending
+    /// [`Action::RebaseStateLoaded`].
+    pub(crate) fn load_rebase_state(&self) {
+        self.spawn(|shell, repo, _| async move {
+            let result = interrupted_rebase(&shell, &repo)
+                .await
+                .map_err(|error| friendly_shell_error("check rebase state", &error));
+            vec![Action::RebaseStateLoaded { result }]
+        });
+    }
+
+    /// Stages a resolved file, sending [`Action::ConflictFileStaged`].
+    pub(crate) fn stage_conflict_file(&self, path: String) {
+        self.spawn(move |shell, repo, _| async move {
+            let result = stage_resolved(&shell, &repo, &path)
+                .await
+                .map_err(|error| friendly_shell_error("mark resolved", &error));
+            vec![Action::ConflictFileStaged { path, result }]
         });
     }
 

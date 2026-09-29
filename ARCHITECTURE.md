@@ -21,9 +21,11 @@ src/
   config/         config.toml loading and key-string parsing (see docs/config.md)
   doctor/         git / gh / gh-stack presence, version and auth checks
   shell/          Shell trait, ProcessShell, MockShell (process I/O only)
-  git/            typed wrappers over plain `git` (diff, log, branch, rebase, status)
+  git/            typed wrappers over plain `git` (diff, log, branch, status, and
+                  rebase: mid-rebase detection, conflicted files, continue/abort)
   stack/          gh-stack domain: models (Stack, Layer, PullRequestRef, StackSummary...)
-                  and operations (list_stacks, hydrate_layer_detail, submit_stack...)
+                  and operations (list_stacks, hydrate_layer_detail, submit_stack,
+                  sync_stack, rebase_stack / continue_rebase / abort_rebase...)
   theme/          palette, text styles, glyph sets (Nerd Font / ASCII)
   tui/
     mod.rs        exposes run()
@@ -33,6 +35,9 @@ src/
       refresh.rs     stack list refresh      layers.rs    layer detail/diff loading
       stack_ops.rs   checkout, add layer, open PR, unstack
       submit.rs      submit + progress       sync.rs      gh stack sync
+      rebase.rs      gh stack rebase, conflict detection, edit/stage/continue/abort
+      external.rs    handing the terminal to $EDITOR and other interactive commands
+      auto_refresh.rs  periodic refresh (refresh_interval_secs)
       feedback.rs    errors, status, confirm modal
       test_support.rs  reducer test harness (settle/apply/dispatch_now)
     action.rs     Action enum
@@ -41,7 +46,8 @@ src/
     keymap.rs     KeyIntent + data-driven key table (overridable from config)
     messages.rs   user-facing wording for shell failures
     state/        AppState, Screen, cache keys; layer_resource (detail/diff cache);
-                  submit_progress (per-layer submit status)
+                  submit_progress (per-layer submit status); external_command
+                  (a pending request for the real terminal)
     components/   one module per panel or overlay
       stack_browser/   the main browser component
         mod.rs         view state and layout; Component impl delegates to:
@@ -53,7 +59,10 @@ src/
         chrome.rs      header, and a footer of hints for the focused panel,
                        fitted to the terminal width
       confirm.rs       shared ConfirmModal for every destructive action
+      conflict_resolver.rs  replaces the browser while a rebase is stopped on a
+                       conflict: files, $EDITOR, mark resolved, continue, abort
       help.rs          `?` overlay listing every binding and toggle state
+      sync_confirm.rs  the sync confirmation modal
       add_layer_prompt.rs
       submit_progress.rs
     widgets/      stateless render helpers: panel_block, centered_rect, spinner, glyphs()
@@ -95,6 +104,44 @@ A typical round trip is selecting a layer:
 4. The panel renders "Loading diff...".
 5. The spawned task sends back `LayerDiffLoaded`.
 6. The reducer stores the result and the panel renders the diff.
+
+### Handing the terminal to another program
+
+Some commands need the real terminal, e.g. `$EDITOR` on a conflicted file,
+or an interactive `gh stack modify` (#20). An effect task can't run them: it
+has no terminal, and the TUI is drawing on it. The reducer can't either,
+because it never awaits. So they go through the event loop:
+
+```
+ e ─► EditConflictFile ─► reducer ─► RunExternal(ExternalCommand { program, args, then })
+                                       └─ sets AppState::external_command
+ event loop (run_app), before the next draw:
+   take external_command
+   ratatui::restore()                   leave raw mode + alternate screen, show cursor
+   run program, stdin/stdout/stderr inherited, wait for it to exit
+   enable raw mode, enter alternate screen, terminal.clear()   (full repaint)
+   dispatch ExternalCommandFinished { result, then }
+     reducer: SetError on failure, then dispatch `then` (e.g. LoadRebaseState)
+```
+
+The terminal is always restored, even when the program can't be started.
+It's restored by hand instead of calling `ratatui::init()` again, which would
+stack another panic hook and build a new `Terminal`. Effects keep running
+while the program has the terminal, and their results queue in the channel
+until the loop resumes. To reuse this, build an `ExternalCommand` in a
+reducer and return `Action::RunExternal(..)`; see `tui/app/external.rs`.
+
+### Rebase and conflicts
+
+`R` (or `u` for upstack only) confirms, then runs `gh stack rebase` via
+`Effects::rebase_stack`. Whether a run stopped on a conflict is decided by
+asking git (`rebase-merge`/`rebase-apply` in the git dir, and
+`git diff --name-only --diff-filter=U`), not by reading gh's output. A
+conflict sets `AppState::conflict`, and while that's set the
+`conflict_resolver` component replaces the stack browser. Every refresh,
+including the one on startup, also runs this check, so a rebase left over
+from an earlier session opens the same view. See `stack/rebase.rs` for what
+`gh stack rebase` was verified to do.
 
 ## Boundaries
 

@@ -24,6 +24,7 @@ use crate::tui::keymap;
 use crate::tui::state::AppState;
 use crate::tui::widgets::panel_block;
 
+pub(crate) use chrome::{Hint, render_hinted_footer};
 use chrome::{render_footer, render_header};
 use layer_detail::render_layer_detail;
 use navigator::render_navigator;

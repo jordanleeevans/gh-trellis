@@ -6,6 +6,7 @@ mod detail;
 mod layer;
 pub mod local;
 mod pull_request;
+mod rebase;
 mod stack;
 mod submit;
 mod summary;
@@ -18,6 +19,10 @@ pub use detail::{
 };
 pub use layer::Layer;
 pub use pull_request::PullRequestRef;
+pub use rebase::{
+    ConflictedFile, RebaseConflict, RebaseDriver, RebaseOutcome, RebaseScope, StageOutcome,
+    abort_rebase, continue_rebase, interrupted_rebase, rebase_stack, stage_resolved,
+};
 pub use stack::Stack;
 pub use submit::{SubmitEvent, SubmitLayerOutcome, SubmitOptions, submit_stack};
 pub use summary::{PrCounts, StackSummary, list_stacks};

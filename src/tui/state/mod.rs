@@ -1,13 +1,34 @@
 //! Everything the reducer owns, shared read-only with components for drawing.
 
+pub(crate) mod external_command;
 pub(crate) mod layer_resource;
 pub(crate) mod submit_progress;
 
-use crate::stack::{Layer, LayerDetail, StackSummary, SubmitOptions, SyncOptions};
+use crate::stack::{Layer, LayerDetail, RebaseConflict, StackSummary, SubmitOptions, SyncOptions};
 
 use super::components::confirm::ConfirmModal;
+use external_command::ExternalCommand;
 use layer_resource::LayerResourceCache;
 use submit_progress::SubmitProgress;
+
+/// A rebase command running in the background.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RebaseOp {
+    Rebase,
+    Continue,
+    Abort,
+}
+
+impl RebaseOp {
+    /// The footer's progress message while it runs.
+    pub fn progress_message(self) -> &'static str {
+        match self {
+            RebaseOp::Rebase => "Rebasing stack (fetch, then rebase each layer)",
+            RebaseOp::Continue => "Continuing rebase",
+            RebaseOp::Abort => "Aborting rebase and restoring branches",
+        }
+    }
+}
 
 /// Which stack is currently selected in the unified browser.
 #[derive(Debug, Clone, Copy)]
@@ -42,6 +63,15 @@ pub struct AppState {
     pub sync_options: SyncOptions,
     /// A `gh stack sync` is running in the background.
     pub sync_in_flight: bool,
+    /// A rebase, `--continue` or `--abort` is running in the background.
+    pub rebase_in_flight: Option<RebaseOp>,
+    /// A rebase stopped on a conflict (or left over from an earlier
+    /// session). While set, the conflict view replaces the stack browser.
+    pub conflict: Option<RebaseConflict>,
+    /// A command that needs the real terminal (e.g. `$EDITOR`). The event
+    /// loop takes it, suspends the TUI, runs it, resumes, and dispatches
+    /// [`crate::tui::action::Action::ExternalCommandFinished`].
+    pub external_command: Option<ExternalCommand>,
     pub should_quit: bool,
 }
 
@@ -64,6 +94,9 @@ impl Default for AppState {
             submit_options: SubmitOptions::default(),
             sync_options: SyncOptions::default(),
             sync_in_flight: false,
+            rebase_in_flight: None,
+            conflict: None,
+            external_command: None,
             should_quit: false,
         }
     }
