@@ -96,6 +96,24 @@ Follow these steps to make a release:
    git push origin v0.2.0
    ```
 
+Pushing the tag runs `.github/workflows/release.yml`, which:
+
+- fails fast if the tag doesn't match the `Cargo.toml` version;
+- builds `gh-trellis` for macOS (arm64, x86_64), Linux (x86_64, arm64) and
+  Windows (x86_64);
+- names each binary `gh-trellis-<os>-<arch>[.exe]`, the asset names
+  `gh extension install` looks for;
+- creates the GitHub release with notes from `git cliff --latest`.
+
+Once the release is up, `gh extension install jordanleeevans/gh-trellis`
+installs it and `gh extension upgrade trellis` picks up new versions.
+
+8. **Publish to crates.io** (optional, manual; needs `cargo login` once):
+   ```bash
+   cargo publish --dry-run
+   cargo publish
+   ```
+
 ## Tools
 
 - **git-cliff**: Generates changelogs from conventional commits
@@ -109,3 +127,5 @@ Follow these steps to make a release:
 - The changelog header and formatting are defined in `cliff.toml`
 - Merge commits and squash-merge commits are automatically filtered out
 - The first tagged release will be `v0.1.0` when ready
+- The repository must be named `gh-trellis` for `gh extension install` to
+  accept it (gh requires extension repositories to start with `gh-`)

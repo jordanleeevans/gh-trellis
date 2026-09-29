@@ -3,13 +3,13 @@
 The GIFs in the main README are recorded with [vhs](https://github.com/charmbracelet/vhs).
 They are not committed until someone records them.
 
-The tapes launch `trellis` in the directory you run `vhs` from, so record from
+The tapes launch `gh-trellis` in the directory you run `vhs` from, so record from
 a repository that has a gh-stack stack (a scratch repo made with the commands
 in the main README works), not from the trellis checkout.
 
 ```sh
 brew install vhs
-cargo install --path /path/to/trellis      # puts `trellis` on your PATH
+cargo install --path /path/to/trellis      # puts `gh-trellis` on your PATH
 cd /path/to/scratch-repo-with-a-stack
 vhs /path/to/trellis/docs/tapes/overview.tape
 vhs /path/to/trellis/docs/tapes/help.tape

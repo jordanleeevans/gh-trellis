@@ -1,6 +1,6 @@
 # Records docs/images/help.gif: the `?` key-binding overlay.
 # Read-only keys only. Run it from a repo that already has a gh-stack stack,
-# with `trellis` on your PATH. See docs/tapes/README.md.
+# with `gh-trellis` on your PATH. See docs/tapes/README.md.
 Output docs/images/help.gif
 
 Set Shell "bash"
@@ -9,7 +9,7 @@ Set Width 1200
 Set Height 700
 Set Padding 10
 
-Type "trellis"
+Type "gh-trellis"
 Enter
 Sleep 3s
 
