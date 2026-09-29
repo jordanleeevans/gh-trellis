@@ -19,7 +19,8 @@ Trellis is a terminal UI over the `gh stack` CLI extension. It uses
 src/
   main.rs         load config → dependency check → tui::run
   config/         config.toml loading and key-string parsing (see docs/config.md)
-  doctor/         git / gh / gh-stack presence, version and auth checks
+  doctor/         git / gh / gh-stack presence, version and auth checks, the
+                  per-platform fix commands, and the plain-text first-run report
   shell/          Shell trait, ProcessShell, MockShell (process I/O only)
   git/            typed wrappers over plain `git` (diff, log, branch, status, and
                   rebase: mid-rebase detection, conflicted files, continue/abort)

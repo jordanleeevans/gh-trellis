@@ -2,58 +2,54 @@ use std::path::Path;
 
 use crate::shell::{Shell, ShellError};
 
-use super::error::CheckFailure;
+use super::error::{CheckFailure, Tool};
 use super::version::Version;
 
 /// A single version-gated dependency check: run a command, parse a version
 /// out of its output, and compare it against a minimum.
 pub struct VersionRequirement {
-    /// Human-readable name used in failure messages, e.g. `"git"`.
-    pub name: &'static str,
+    pub tool: Tool,
     pub program: &'static str,
     pub args: &'static [&'static str],
     pub minimum: Version,
-    /// Instructions shown when the binary is missing or outdated.
-    pub install: &'static str,
 }
 
 impl VersionRequirement {
-    /// Runs the check, returning `Ok(())` if `program` is installed and its
-    /// version meets `minimum`.
-    pub async fn check(&self, shell: &impl Shell, cwd: &Path) -> Result<(), CheckFailure> {
+    /// Runs the check, returning the version found if `program` is installed
+    /// and meets `minimum`.
+    pub async fn check(
+        &self,
+        shell: &impl Shell,
+        cwd: &Path,
+    ) -> Result<Option<Version>, CheckFailure> {
         let output = match shell.run(cwd, self.program, self.args).await {
             Ok(output) => output,
             Err(ShellError::BinaryNotFound(_)) => {
-                return Err(CheckFailure::NotInstalled {
-                    name: self.name,
-                    install: self.install,
-                });
+                return Err(CheckFailure::NotInstalled { tool: self.tool });
             }
             Err(err) => {
                 return Err(CheckFailure::Failed {
-                    name: self.name,
+                    tool: self.tool,
                     reason: err.to_string(),
-                    remedy: self.install,
                 });
             }
         };
 
         let found =
             Version::parse(&output.stdout).map_err(|_| CheckFailure::UnparseableVersion {
-                name: self.name,
+                tool: self.tool,
                 output: output.stdout.clone(),
             })?;
 
         if found < self.minimum {
             return Err(CheckFailure::OutdatedVersion {
-                name: self.name,
+                tool: self.tool,
                 found,
                 minimum: self.minimum,
-                install: self.install,
             });
         }
 
-        Ok(())
+        Ok(Some(found))
     }
 }
 
@@ -65,11 +61,10 @@ mod tests {
 
     fn requirement() -> VersionRequirement {
         VersionRequirement {
-            name: "git",
+            tool: Tool::Git,
             program: "git",
             args: &["--version"],
             minimum: Version::new(2, 20, 0),
-            install: "https://git-scm.com/downloads",
         }
     }
 
@@ -88,7 +83,7 @@ mod tests {
 
         let result = requirement().check(&shell, cwd.as_path()).await;
 
-        assert!(result.is_ok());
+        assert_eq!(result, Ok(Some(Version::new(2, 43, 0))));
     }
 
     #[tokio::test]
@@ -101,10 +96,9 @@ mod tests {
         assert_eq!(
             result,
             Err(CheckFailure::OutdatedVersion {
-                name: "git",
+                tool: Tool::Git,
                 found: Version::new(2, 10, 0),
                 minimum: Version::new(2, 20, 0),
-                install: "https://git-scm.com/downloads",
             })
         );
     }
@@ -120,13 +114,7 @@ mod tests {
 
         let result = requirement().check(&shell, cwd.as_path()).await;
 
-        assert_eq!(
-            result,
-            Err(CheckFailure::NotInstalled {
-                name: "git",
-                install: "https://git-scm.com/downloads",
-            })
-        );
+        assert_eq!(result, Err(CheckFailure::NotInstalled { tool: Tool::Git }));
     }
 
     #[tokio::test]
@@ -139,7 +127,7 @@ mod tests {
         assert_eq!(
             result,
             Err(CheckFailure::UnparseableVersion {
-                name: "git",
+                tool: Tool::Git,
                 output: "not a version".to_string(),
             })
         );

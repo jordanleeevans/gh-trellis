@@ -12,6 +12,7 @@ mod tui;
 
 use anyhow::Result;
 use std::env;
+use std::io::IsTerminal;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -36,8 +37,16 @@ async fn main() -> Result<()> {
     let cwd = env::current_dir()?;
     let shell = shell::ProcessShell;
 
-    if let Err(err) = doctor::check(&shell, cwd.as_path()).await {
-        eprintln!("{err}");
+    // A plain report on stderr, before the alternate screen, so the user can
+    // select and copy the commands. A healthy machine prints nothing.
+    let diagnosis = doctor::diagnose(&shell, cwd.as_path()).await;
+    let color = doctor::use_color(
+        std::io::stderr().is_terminal(),
+        env::var_os("NO_COLOR").as_deref(),
+        env::var_os("TERM").as_deref(),
+    );
+    if let Some(report) = doctor::render(&diagnosis, doctor::Platform::current(), color) {
+        eprint!("{report}");
         std::process::exit(1);
     }
 

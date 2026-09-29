@@ -2,24 +2,18 @@ use std::path::Path;
 
 use crate::shell::{Shell, ShellError};
 
-use super::error::CheckFailure;
-
-const NAME: &str = "gh auth";
-const INSTALL: &str = "https://cli.github.com";
-const REMEDY: &str = "run `gh auth login`";
+use super::error::{CheckFailure, Tool};
+use super::version::Version;
 
 /// Checks that `gh` is authenticated (`gh auth status` exits successfully).
-pub async fn check(shell: &impl Shell, cwd: &Path) -> Result<(), CheckFailure> {
+/// There is no version to report, so success carries `None`.
+pub async fn check(shell: &impl Shell, cwd: &Path) -> Result<Option<Version>, CheckFailure> {
     match shell.run(cwd, "gh", &["auth", "status"]).await {
-        Ok(_) => Ok(()),
-        Err(ShellError::BinaryNotFound(_)) => Err(CheckFailure::NotInstalled {
-            name: "gh",
-            install: INSTALL,
-        }),
+        Ok(_) => Ok(None),
+        Err(ShellError::BinaryNotFound(_)) => Err(CheckFailure::NotInstalled { tool: Tool::Gh }),
         Err(err) => Err(CheckFailure::Failed {
-            name: NAME,
+            tool: Tool::GhAuth,
             reason: err.to_string(),
-            remedy: REMEDY,
         }),
     }
 }
@@ -48,7 +42,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fails_with_login_remedy_when_not_authenticated() {
+    async fn fails_when_not_authenticated() {
         let cwd = env::current_dir().unwrap();
         let command_failed = ShellError::CommandFailed {
             program: "gh".to_string(),
@@ -66,9 +60,8 @@ mod tests {
         assert_eq!(
             result,
             Err(CheckFailure::Failed {
-                name: NAME,
+                tool: Tool::GhAuth,
                 reason: expected_reason,
-                remedy: REMEDY,
             })
         );
     }
@@ -84,12 +77,6 @@ mod tests {
 
         let result = check(&shell, cwd.as_path()).await;
 
-        assert_eq!(
-            result,
-            Err(CheckFailure::NotInstalled {
-                name: "gh",
-                install: INSTALL,
-            })
-        );
+        assert_eq!(result, Err(CheckFailure::NotInstalled { tool: Tool::Gh }));
     }
 }

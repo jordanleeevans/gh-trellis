@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::shell::Shell;
 
-use super::error::CheckFailure;
+use super::error::{CheckFailure, Tool};
 use super::requirement::VersionRequirement;
 use super::version::Version;
 
@@ -10,15 +10,14 @@ use super::version::Version;
 pub const MINIMUM: Version = Version::new(2, 20, 0);
 
 const REQUIREMENT: VersionRequirement = VersionRequirement {
-    name: "git",
+    tool: Tool::Git,
     program: "git",
     args: &["--version"],
     minimum: MINIMUM,
-    install: "https://git-scm.com/downloads",
 };
 
 /// Checks that `git` is installed and meets [`MINIMUM`].
-pub async fn check(shell: &impl Shell, cwd: &Path) -> Result<(), CheckFailure> {
+pub async fn check(shell: &impl Shell, cwd: &Path) -> Result<Option<Version>, CheckFailure> {
     REQUIREMENT.check(shell, cwd).await
 }
 
