@@ -44,7 +44,9 @@ src/
                   submit_progress (per-layer submit status)
     components/   one module per panel or overlay
       stack_browser/   the main browser component
-        mod.rs         view state and layout; Component impl delegates to:
+        mod.rs         view state and drawing; Component impl delegates to:
+        layout.rs      pure geometry: panel rects from terminal size and focus
+                       (single column below 90 cols, compact header below 28 rows)
         keys.rs        key press -> Action for the focused panel
         selection.rs   selection, focus and scroll updates on applied Actions
         navigator.rs   stack list with the selected stack expanded into layers

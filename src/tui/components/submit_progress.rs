@@ -8,10 +8,10 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Gauge, Paragraph, Wrap
 
 use crate::theme::ui::THEME;
 use crate::tui::state::submit_progress::{LayerSubmitStatus, SubmitLayerProgress, SubmitProgress};
-use crate::tui::widgets::{centered_rect, glyphs};
+use crate::tui::widgets::{centered_rect_min, glyphs};
 
 pub(crate) fn render(frame: &mut Frame, area: Rect, progress: &SubmitProgress) {
-    let area = centered_rect(area, 70, 60);
+    let area = centered_rect_min(area, 70, 60, 44, 10);
 
     let failed = progress.failed_count();
     let title = if !progress.finished {

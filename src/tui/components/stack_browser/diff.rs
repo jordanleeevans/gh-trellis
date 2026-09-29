@@ -12,6 +12,7 @@ use crate::theme::ui::THEME;
 use crate::tui::state::lower_layer_ref;
 use crate::tui::widgets::{glyphs, panel_block};
 
+use super::layout::scroll_to_show;
 use super::{ActivePanel, PanelView};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,8 +96,14 @@ pub(super) fn render_diff_files(
         return;
     }
 
-    let lines = build_file_tree_lines(&files, area.width, selected_diff_file, is_active);
-    frame.render_widget(Paragraph::new(lines).block(block), area);
+    let (lines, selected_line) =
+        build_file_tree_lines(&files, area.width, selected_diff_file, is_active);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((scroll_to_show(selected_line, area.height), 0))
+            .block(block),
+        area,
+    );
 }
 
 pub(super) fn render_diff(
@@ -184,8 +191,9 @@ pub(super) fn build_file_tree_lines(
     width: u16,
     selected_index: usize,
     is_active: bool,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, usize) {
     let mut lines = Vec::new();
+    let mut selected_line = 0;
     let mut previous_dirs: Vec<&str> = Vec::new();
 
     for (file_index, file) in files.iter().enumerate() {
@@ -201,6 +209,9 @@ pub(super) fn build_file_tree_lines(
             lines.push(folder_line(dir, depth, depth + 1 == dirs.len()));
         }
 
+        if file_index == selected_index {
+            selected_line = lines.len();
+        }
         lines.push(diff_file_line(
             file,
             width,
@@ -211,7 +222,7 @@ pub(super) fn build_file_tree_lines(
         previous_dirs = dirs.to_vec();
     }
 
-    lines
+    (lines, selected_line)
 }
 
 pub(super) fn folder_line(name: &str, depth: usize, is_leaf: bool) -> Line<'static> {

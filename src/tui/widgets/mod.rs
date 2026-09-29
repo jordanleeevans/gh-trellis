@@ -4,7 +4,7 @@ mod layout;
 mod panel;
 mod spinner;
 
-pub(crate) use layout::centered_rect;
+pub(crate) use layout::centered_rect_min;
 pub(crate) use panel::panel_block;
 pub(crate) use spinner::spinner_frame;
 

@@ -13,6 +13,7 @@ use crate::tui::state::{AppState, layer_detail_cache_key, layer_diff_cache_key};
 use crate::tui::widgets::{glyphs, panel_block};
 
 use super::diff::{render_diff, render_diff_files};
+use super::layout::summary_height;
 use super::navigator::layer_title;
 use super::{ActivePanel, PanelView};
 
@@ -68,8 +69,11 @@ pub(super) fn render_layer_detail(
     }
 
     let lines = detail_lines(layer, rebase_status, detail);
-    let [summary_area, files_area] =
-        Layout::vertical([Constraint::Length(10), Constraint::Min(0)]).areas(area);
+    let [summary_area, files_area] = Layout::vertical([
+        Constraint::Length(summary_height(area.height)),
+        Constraint::Min(0),
+    ])
+    .areas(area);
 
     frame.render_widget(
         Paragraph::new(lines)

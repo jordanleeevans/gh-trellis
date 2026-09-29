@@ -1,18 +1,18 @@
 //! The unified stack browser: navigator, layer detail, changed files and
 //! diff panels, with focus moving between them. Each panel renders from its
-//! own submodule; this module owns the shared view state, key handling and
-//! layout.
+//! own submodule; this module owns the shared view state and key handling,
+//! and `layout` decides where the panels go.
 
 mod chrome;
 mod diff;
 mod keys;
 mod layer_detail;
+mod layout;
 mod navigator;
 mod selection;
 
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::widgets::{ListState, Paragraph};
 
 use crate::theme::ui::THEME;
@@ -26,6 +26,7 @@ use crate::tui::widgets::panel_block;
 
 use chrome::{render_footer, render_header};
 use layer_detail::render_layer_detail;
+use layout::BrowserLayout;
 use navigator::render_navigator;
 use selection::selected_stack_index;
 
@@ -92,12 +93,7 @@ fn render(
     list_state: &mut ListState,
     view: PanelView,
 ) {
-    let [header_area, content_area, footer_area] = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(0),
-        Constraint::Length(2),
-    ])
-    .areas(frame.area());
+    let layout = layout::compute(frame.area(), view.active_panel);
 
     let selected_stack = selected_stack_index(state, stack_list_state.selected());
     let selected_layer = selected_stack
@@ -107,26 +103,26 @@ fn render(
                 .selected()
                 .and_then(|layer_index| stack.layers.get(layer_index))
         });
-    render_header(frame, header_area, state, selected_stack, selected_layer);
+    render_header(frame, &layout, state, selected_stack, selected_layer);
     render_stack(
         frame,
-        content_area,
+        &layout,
         state,
         stack_list_state,
         list_state,
         selected_stack,
         view,
     );
-    render_footer(frame, footer_area, state, view.active_panel);
+    render_footer(frame, layout.footer, state, view.active_panel);
 
     if let Some(progress) = &state.submit_progress {
-        submit_progress::render(frame, content_area, progress);
+        submit_progress::render(frame, layout.content, progress);
     }
 }
 
 fn render_stack(
     frame: &mut Frame,
-    area: Rect,
+    layout: &BrowserLayout,
     state: &AppState,
     stack_list_state: &mut ListState,
     list_state: &mut ListState,
@@ -134,31 +130,22 @@ fn render_stack(
     view: PanelView,
 ) {
     let active_panel = view.active_panel;
-    let [stack_area, detail_area] = Layout::new(
-        Direction::Horizontal,
-        [Constraint::Percentage(32), Constraint::Percentage(68)],
-    )
-    .areas(area);
 
-    render_navigator(
-        frame,
-        stack_area,
-        state,
-        stack_list_state.selected(),
-        list_state.selected(),
-        active_panel,
-    );
-
-    let Some(stack) = selected_stack.and_then(|index| state.stacks.get(index)) else {
-        frame.render_widget(
-            Paragraph::new("No stacks found in this repository.")
-                .style(THEME.text.muted)
-                .block(panel_block(
-                    "navigator",
-                    matches!(active_panel, ActivePanel::Stacks | ActivePanel::Layers),
-                )),
+    if let Some(stack_area) = layout.navigator {
+        render_navigator(
+            frame,
             stack_area,
+            state,
+            stack_list_state.selected(),
+            list_state.selected(),
+            active_panel,
         );
+    }
+
+    let Some(detail_area) = layout.detail else {
+        return;
+    };
+    let Some(stack) = selected_stack.and_then(|index| state.stacks.get(index)) else {
         frame.render_widget(
             Paragraph::new("Select a stack to view its layers.")
                 .style(THEME.text.muted)
@@ -216,6 +203,9 @@ impl Component for StackBrowser {
         self.apply_update(action, state);
     }
 }
+
+#[cfg(test)]
+mod render_tests;
 
 #[cfg(test)]
 mod test_support {

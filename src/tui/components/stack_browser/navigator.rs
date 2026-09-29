@@ -13,6 +13,7 @@ use crate::tui::state::AppState;
 use crate::tui::widgets::{glyphs, panel_block};
 
 use super::ActivePanel;
+use super::layout::scroll_to_show;
 
 pub(super) fn render_navigator(
     frame: &mut Frame,
@@ -35,12 +36,14 @@ pub(super) fn render_navigator(
         return;
     }
 
-    let lines = navigator_lines(state, selected_stack, selected_layer, active_panel);
+    let (lines, focus_line) = navigator_lines(state, selected_stack, selected_layer, active_panel);
     frame.render_widget(
-        Paragraph::new(lines).block(panel_block(
-            "navigator",
-            matches!(active_panel, ActivePanel::Stacks | ActivePanel::Layers),
-        )),
+        Paragraph::new(lines)
+            .scroll((scroll_to_show(focus_line, area.height), 0))
+            .block(panel_block(
+                "navigator",
+                matches!(active_panel, ActivePanel::Stacks | ActivePanel::Layers),
+            )),
         area,
     );
 }
@@ -50,8 +53,9 @@ pub(super) fn navigator_lines(
     selected_stack: Option<usize>,
     selected_layer: Option<usize>,
     active_panel: ActivePanel,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, usize) {
     let mut lines = Vec::new();
+    let mut focus_line = 0;
 
     for (stack_index, stack) in state.stacks.iter().enumerate() {
         let expanded = Some(stack_index) == selected_stack;
@@ -65,6 +69,9 @@ pub(super) fn navigator_lines(
             Style::default()
         };
         let symbol = if expanded { "▼" } else { "▶" };
+        if expanded {
+            focus_line = lines.len();
+        }
         lines.push(Line::from(Span::styled(
             format!("{symbol} {}", stack_name(stack)),
             stack_style,
@@ -93,6 +100,9 @@ pub(super) fn navigator_lines(
                     } else {
                         Style::default()
                     };
+                if selected_layer == Some(layer_index) && active_panel != ActivePanel::Stacks {
+                    focus_line = lines.len();
+                }
                 lines.push(Line::from(Span::styled(
                     format!(
                         "  {branch_marker} {:<14} {}",
@@ -107,7 +117,7 @@ pub(super) fn navigator_lines(
         }
     }
 
-    lines
+    (lines, focus_line)
 }
 
 pub(super) fn stack_name(stack: &StackSummary) -> String {
