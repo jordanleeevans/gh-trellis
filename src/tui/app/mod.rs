@@ -94,8 +94,13 @@ impl App {
             self.stack_browser.update(&action, &mut self.state);
             pending.extend(follow_ups);
 
-            if matches!(action, Action::SelectNext | Action::SelectPrevious)
-                && let Screen::Layers(stack_index) = self.state.screen
+            // Whenever the selected layer may have changed (including when a
+            // fresh stack list first selects one), load its detail and diff.
+            // Both are cached, so an unchanged selection costs nothing.
+            if matches!(
+                action,
+                Action::SelectNext | Action::SelectPrevious | Action::StacksLoaded(_)
+            ) && let Screen::Layers(stack_index) = self.state.screen
                 && let Some(layer_index) = self.stack_browser.selected_index()
             {
                 pending.push_back(Action::LoadLayerDetail {

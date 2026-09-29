@@ -158,8 +158,8 @@ mod tests {
         assert!(app.state.error.is_some());
     }
 
-    #[test]
-    fn a_background_refresh_does_not_wipe_the_status_message() {
+    #[tokio::test]
+    async fn a_background_refresh_does_not_wipe_the_status_message() {
         let mut app = App::new();
         app.state.status = Some("stack synced".to_string());
         app.state.refresh_active_request_id = Some(1);
@@ -170,6 +170,34 @@ mod tests {
         }]);
 
         assert_eq!(app.state.status.as_deref(), Some("stack synced"));
+    }
+
+    /// Regression: the first layer's detail and diff never loaded at
+    /// startup, only after the selection moved.
+    #[tokio::test]
+    async fn loading_stacks_loads_the_selected_layer() {
+        use crate::tui::state::{layer_detail_cache_key, layer_diff_cache_key};
+
+        let mut app = App::new();
+        app.state.refresh_active_request_id = Some(1);
+
+        app.dispatch_now(vec![Action::StackRefreshSucceeded {
+            request_id: 1,
+            result: Ok(vec![stack_summary("stack-a", 2)]),
+        }]);
+
+        let stack = &app.state.stacks[0];
+        let selected = &stack.layers[0];
+        assert!(
+            app.state
+                .layer_details
+                .is_loading(&layer_detail_cache_key(stack, selected))
+        );
+        assert!(
+            app.state
+                .layer_diffs
+                .is_loading(&layer_diff_cache_key(stack, selected))
+        );
     }
 
     #[tokio::test]
