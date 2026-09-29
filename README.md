@@ -29,26 +29,35 @@ Rust toolchain that supports edition 2024 (Rust 1.85 or newer).
 
 ## Install
 
-trellis is not published yet. `cargo install trellis` and Homebrew are
-planned in [#41](https://github.com/jordanleeevans/trellis/issues/41) and do
-not work today (the `trellis` name on crates.io belongs to an unrelated crate).
-
-Install from source:
+trellis is a [GitHub CLI extension](https://docs.github.com/en/github-cli/github-cli/using-github-cli-extensions),
+installed the same way as gh-stack:
 
 ```sh
-cargo install --git https://github.com/jordanleeevans/trellis
+gh extension install jordanleeevans/gh-trellis
+gh trellis                          # run it
+gh extension upgrade trellis        # later, to update
 ```
 
-Or from a local checkout:
+This downloads a prebuilt binary for macOS (Apple silicon and Intel), Linux
+(x86_64 and arm64) or Windows (x86_64) from the latest
+[release](https://github.com/jordanleeevans/gh-trellis/releases). Until the
+first release is published, install from source instead.
+
+With cargo, once the crate is published to crates.io:
 
 ```sh
-git clone https://github.com/jordanleeevans/trellis
-cd trellis
-cargo install --path .
+cargo install gh-trellis
 ```
 
-Both put a `trellis` binary in `~/.cargo/bin`; make sure that is on your
-`PATH`.
+From source (Rust 1.85 or newer):
+
+```sh
+cargo install --git https://github.com/jordanleeevans/gh-trellis
+```
+
+Both cargo installs put a `gh-trellis` binary in `~/.cargo/bin`. Run it
+directly as `gh-trellis`; `gh trellis` only finds extensions installed with
+`gh extension install`.
 
 ## Quickstart
 
@@ -72,7 +81,7 @@ you need a repository with a stack. If you have one, skip to step 2.
 2. Run trellis from inside the repository:
 
    ```sh
-   trellis
+   gh trellis        # or gh-trellis, if you installed with cargo
    ```
 
 If the repository has no stacks, the navigator says "No stacks found in this
@@ -207,4 +216,14 @@ changelog generation and release steps.
 
 ## License
 
-License: TBD
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.

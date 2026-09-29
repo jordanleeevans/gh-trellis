@@ -79,7 +79,7 @@ pub fn render(diagnosis: &Diagnosis, platform: Platform, color: bool) -> Option<
     }
 
     out.push('\n');
-    out.push_str("Fix the above, then run trellis again.\n");
+    out.push_str("Fix the above, then run gh trellis again.\n");
     Some(out)
 }
 
