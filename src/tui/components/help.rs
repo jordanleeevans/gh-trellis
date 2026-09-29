@@ -154,7 +154,8 @@ pub(crate) fn render(
     state: &AppState,
     scroll: u16,
 ) -> u16 {
-    let popup = centered_rect_min(area, 90, 90, 40, 10);
+    // Full height: the overlay is modal, and every row is needed at 80x24.
+    let popup = centered_rect_min(area, 90, 100, 40, 10);
     frame.render_widget(Clear, popup);
 
     let close = keymap.short_label(KeyIntent::Help).unwrap_or_default();
@@ -165,7 +166,7 @@ pub(crate) fn render(
     let sections = sections(keymap, state);
     let (left, right): (Vec<&HelpSection>, Vec<&HelpSection>) = sections
         .iter()
-        .partition(|section| matches!(section.title, "Navigation" | "Diff"));
+        .partition(|section| matches!(section.title, "Navigation" | "Diff" | "General"));
 
     let columns: Vec<(Vec<Line>, Rect)> = if inner.width >= TWO_COLUMN_MIN_WIDTH {
         let [left_area, right_area] =
