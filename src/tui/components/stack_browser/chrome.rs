@@ -92,7 +92,19 @@ fn selection_text(state: &AppState, selected_stack: Option<usize>) -> String {
 }
 
 pub(super) fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, panel: ActivePanel) {
-    let content = footer_line(state, keymap::current(), panel, area.width);
+    render_hinted_footer(frame, area, state, panel_hints(panel));
+}
+
+/// Draws the footer with `hints` for whatever is focused. Shared with other
+/// full-screen views (e.g. the conflict view) so errors, progress and
+/// status read the same everywhere.
+pub(crate) fn render_hinted_footer(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    hints: &[Hint],
+) {
+    let content = hinted_footer_line(state, keymap::current(), hints, area.width);
 
     frame.render_widget(
         Paragraph::new(content).block(
@@ -104,7 +116,8 @@ pub(super) fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, pan
     );
 }
 
-type Hint = (&'static [KeyIntent], &'static str);
+/// A footer hint: the intents whose keys are shown, and what they do.
+pub(crate) type Hint = (&'static [KeyIntent], &'static str);
 
 /// Key hints for the focused panel, most useful first. The footer shows as
 /// many as fit; everything else is in the `?` help overlay.
@@ -117,7 +130,9 @@ fn panel_hints(panel: ActivePanel) -> &'static [Hint] {
             (&[Checkout], "checkout"),
             (&[Submit], "submit"),
             (&[Sync], "sync"),
+            (&[RebaseStack], "rebase"),
             (&[AddLayer], "add layer"),
+            (&[RebaseUpstack], "rebase upstack"),
             (&[Refresh], "refresh"),
         ],
         ActivePanel::Layers => &[
@@ -172,10 +187,22 @@ fn spans_width(spans: &[Span]) -> usize {
     spans.iter().map(|span| span.content.chars().count()).sum()
 }
 
+#[cfg(test)]
 pub(super) fn footer_line(
     state: &AppState,
     keymap: &Keymap,
     panel: ActivePanel,
+    width: u16,
+) -> Line<'static> {
+    hinted_footer_line(state, keymap, panel_hints(panel), width)
+}
+
+/// The footer's single line: an error, else background progress, else the
+/// status message, else as many of `hints` as fit, then help and quit.
+pub(crate) fn hinted_footer_line(
+    state: &AppState,
+    keymap: &Keymap,
+    hints: &[Hint],
     width: u16,
 ) -> Line<'static> {
     let dismiss = || {
@@ -199,14 +226,18 @@ pub(super) fn footer_line(
         spans.extend(dismiss());
         return Line::from(spans);
     }
-    if state.merge_in_flight || state.sync_in_flight || state.refresh_in_flight {
-        let message = if state.merge_in_flight {
-            "Merging stack on GitHub (this can take a few minutes)"
-        } else if state.sync_in_flight {
-            "Syncing stack (fetch, rebase, push)"
-        } else {
-            "Refreshing stacks in background"
-        };
+    let progress = if let Some(op) = state.rebase_in_flight {
+        Some(op.progress_message())
+    } else if state.merge_in_flight {
+        Some("Merging stack on GitHub (this can take a few minutes)")
+    } else if state.sync_in_flight {
+        Some("Syncing stack (fetch, rebase, push)")
+    } else if state.refresh_in_flight {
+        Some("Refreshing stacks in background")
+    } else {
+        None
+    };
+    if let Some(message) = progress {
         return Line::from(vec![
             Span::styled(
                 format!("{} ", spinner_frame(state.refresh_spinner_frame)),
@@ -232,7 +263,7 @@ pub(super) fn footer_line(
     let budget = usize::from(width).saturating_sub(spans_width(&trailing));
 
     let mut spans = Vec::new();
-    for (intents, description) in panel_hints(panel) {
+    for (intents, description) in hints {
         let Some(keys) = hint_keys(keymap, intents) else {
             continue;
         };
@@ -394,6 +425,21 @@ mod tests {
         let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
         state.merge_in_flight = true;
         assert!(footer(&state, ActivePanel::Stacks, 120).contains("Merging stack on GitHub"));
+    }
+
+    #[test]
+    fn footer_offers_rebase_on_the_stacks_panel() {
+        let state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        let stacks = footer(&state, ActivePanel::Stacks, 200);
+        assert!(stacks.contains("R rebase"));
+        assert!(stacks.contains("u rebase upstack"));
+    }
+
+    #[test]
+    fn footer_shows_rebase_progress() {
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        state.rebase_in_flight = Some(crate::tui::state::RebaseOp::Continue);
+        assert!(footer(&state, ActivePanel::Stacks, 120).contains("Continuing rebase"));
     }
 
     #[test]

@@ -25,8 +25,10 @@ impl AutoRefresh {
     ///
     /// Any refresh, including a manual one, restarts the countdown. It
     /// never overlaps a refresh in flight, and it waits while a confirm
-    /// modal is open or a submit, sync or merge is running: a refresh can reorder
-    /// the stack list, and pending actions refer to stacks by index.
+    /// modal is open, a submit, sync, merge or rebase is running, or the
+    /// conflict view is open: a refresh can reorder the stack list, pending
+    /// actions refer to stacks by index, and mid-rebase the stack list can't
+    /// be read reliably (the conflict view reloads with its own key).
     pub(super) fn due(&mut self, now: Instant, state: &AppState) -> bool {
         let Some(interval) = self.interval else {
             return false;
@@ -42,6 +44,8 @@ impl AutoRefresh {
             || state.confirm.is_some()
             || state.sync_in_flight
             || state.merge_in_flight
+            || state.rebase_in_flight.is_some()
+            || state.conflict.is_some()
             || state
                 .submit_progress
                 .as_ref()
@@ -118,6 +122,11 @@ mod tests {
             ..AppState::default()
         };
         assert!(!auto.due(later, &merging));
+        let rebasing = AppState {
+            rebase_in_flight: Some(crate::tui::state::RebaseOp::Rebase),
+            ..AppState::default()
+        };
+        assert!(!auto.due(later, &rebasing));
 
         assert!(auto.due(later, &AppState::default()));
     }

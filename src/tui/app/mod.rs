@@ -15,9 +15,11 @@ use tokio::sync::mpsc;
 use crate::shell::Shell;
 
 mod auto_refresh;
+mod external;
 mod feedback;
 mod layers;
 mod merge;
+mod rebase;
 mod refresh;
 mod stack_ops;
 mod submit;
@@ -28,6 +30,7 @@ pub(crate) mod test_support;
 use super::action::Action;
 use super::component::Component;
 use super::components::confirm::{self, ConfirmModal};
+use super::components::conflict_resolver::ConflictResolver;
 use super::components::stack_browser::StackBrowser;
 use super::effects::Effects;
 use super::keymap::{KeyIntent, key_intent};
@@ -37,6 +40,9 @@ use auto_refresh::AutoRefresh;
 struct App {
     state: AppState,
     stack_browser: StackBrowser,
+    /// Replaces the stack browser while a rebase is stopped
+    /// (`AppState::conflict` is set).
+    conflict_resolver: ConflictResolver,
 }
 
 impl App {
@@ -44,11 +50,16 @@ impl App {
         Self {
             state: AppState::default(),
             stack_browser: StackBrowser::new(),
+            conflict_resolver: ConflictResolver::new(),
         }
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        self.stack_browser.draw(frame, &self.state);
+        if self.state.conflict.is_some() {
+            self.conflict_resolver.draw(frame, &self.state);
+        } else {
+            self.stack_browser.draw(frame, &self.state);
+        }
 
         if let Some(modal) = &self.state.confirm {
             confirm::render(frame, frame.area(), modal);
@@ -72,12 +83,12 @@ impl App {
             actions.push(Action::ClearStatus);
         }
 
-        actions.extend(
-            self.stack_browser
-                .handle_key(key, &self.state)
-                .into_iter()
-                .map(wrap_quit_in_confirmation),
-        );
+        let screen_actions = if self.state.conflict.is_some() {
+            self.conflict_resolver.handle_key(key, &self.state)
+        } else {
+            self.stack_browser.handle_key(key, &self.state)
+        };
+        actions.extend(screen_actions.into_iter().map(wrap_quit_in_confirmation));
 
         if self.state.error.is_some() && key_intent(key) == Some(KeyIntent::DismissMessage) {
             actions.push(Action::ClearError);
@@ -93,6 +104,7 @@ impl App {
         while let Some(action) = pending.pop_front() {
             let follow_ups = self.apply_action(&action, effects);
             self.stack_browser.update(&action, &mut self.state);
+            self.conflict_resolver.update(&action, &mut self.state);
             pending.extend(follow_ups);
 
             // Whenever the selected layer may have changed (including when a
@@ -164,6 +176,21 @@ impl App {
             | Action::CycleMergeMethod
             | Action::MergeStarted { .. }
             | Action::MergeFinished { .. } => self.reduce_merge(action, effects),
+            Action::RebaseStack { .. }
+            | Action::RebaseStarted { .. }
+            | Action::RebaseFinished { .. }
+            | Action::LoadRebaseState
+            | Action::RebaseStateLoaded { .. }
+            | Action::EditConflictFile { .. }
+            | Action::StageConflictFile { .. }
+            | Action::ConflictFileStaged { .. }
+            | Action::ContinueRebase
+            | Action::AbortRebase
+            | Action::RunAbortRebase
+            | Action::RebaseAborted { .. } => self.reduce_rebase(action, effects),
+            Action::RunExternal(_) | Action::ExternalCommandFinished { .. } => {
+                self.reduce_external(action)
+            }
             // View-only actions: handled by the components' `update`.
             Action::SelectNext
             | Action::SelectPrevious
@@ -235,6 +262,20 @@ async fn run_app(
         app.dispatch(vec![Action::Tick], &effects);
         if auto_refresh.due(Instant::now(), &app.state) {
             app.dispatch(vec![Action::RefreshStacks], &effects);
+        }
+
+        // A command that needs the real terminal (e.g. `$EDITOR`) runs
+        // here, between frames, never from the reducer or an effect task.
+        // See `external.rs`.
+        if let Some(command) = app.state.external_command.take() {
+            let result = external::suspend_and_run(terminal, &command, repo).await?;
+            app.dispatch(
+                vec![Action::ExternalCommandFinished {
+                    result,
+                    then: command.then,
+                }],
+                &effects,
+            );
         }
 
         terminal.draw(|frame| app.draw(frame))?;

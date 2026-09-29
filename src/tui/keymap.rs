@@ -24,6 +24,12 @@ pub(crate) enum KeyIntent {
     ToggleSyncPrune,
     Merge,
     CycleMergeMethod,
+    RebaseStack,
+    RebaseUpstack,
+    ConflictEdit,
+    ConflictMarkResolved,
+    RebaseContinue,
+    RebaseAbort,
     Help,
     PageDown,
     PageUp,
@@ -66,6 +72,12 @@ const INTENT_NAMES: &[(&str, KeyIntent)] = &[
     ("toggle_sync_prune", KeyIntent::ToggleSyncPrune),
     ("merge", KeyIntent::Merge),
     ("cycle_merge_method", KeyIntent::CycleMergeMethod),
+    ("rebase_stack", KeyIntent::RebaseStack),
+    ("rebase_upstack", KeyIntent::RebaseUpstack),
+    ("conflict_edit", KeyIntent::ConflictEdit),
+    ("conflict_mark_resolved", KeyIntent::ConflictMarkResolved),
+    ("rebase_continue", KeyIntent::RebaseContinue),
+    ("rebase_abort", KeyIntent::RebaseAbort),
     ("help", KeyIntent::Help),
     ("page_down", KeyIntent::PageDown),
     ("page_up", KeyIntent::PageUp),
@@ -106,6 +118,12 @@ fn default_bindings() -> Vec<(KeyBinding, KeyIntent)> {
         (ch('P'), ToggleSyncPrune),
         (ch('M'), Merge),
         (ch('m'), CycleMergeMethod),
+        (ch('R'), RebaseStack),
+        (ch('u'), RebaseUpstack),
+        (ch('e'), ConflictEdit),
+        (ch('+'), ConflictMarkResolved),
+        (ch('C'), RebaseContinue),
+        (ch('A'), RebaseAbort),
         (ch('?'), Help),
         (bind(KeyCode::PageDown), PageDown),
         (bind(KeyCode::PageUp), PageUp),
@@ -307,6 +325,43 @@ mod tests {
             key_intent(key(KeyCode::Char('m'))),
             Some(KeyIntent::CycleMergeMethod)
         );
+        for (c, intent) in [
+            ('R', KeyIntent::RebaseStack),
+            ('u', KeyIntent::RebaseUpstack),
+            ('e', KeyIntent::ConflictEdit),
+            ('+', KeyIntent::ConflictMarkResolved),
+            ('C', KeyIntent::RebaseContinue),
+            ('A', KeyIntent::RebaseAbort),
+        ] {
+            assert_eq!(key_intent(key(KeyCode::Char(c))), Some(intent), "{c}");
+        }
+    }
+
+    /// Two intents sharing a default key means one of them silently never
+    /// fires (the table's first entry wins), as happened when merge and the
+    /// conflict view both claimed `m`.
+    #[test]
+    fn no_two_intents_share_a_default_key() {
+        let defaults = default_bindings();
+        for (i, (binding, intent)) in defaults.iter().enumerate() {
+            for (other_binding, other_intent) in &defaults[i + 1..] {
+                assert!(
+                    binding != other_binding || intent == other_intent,
+                    "{binding} is bound to both {intent:?} and {other_intent:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_intent_has_a_config_name_and_a_default_key() {
+        let defaults = Keymap::default_keymap();
+        for (_, intent) in INTENT_NAMES {
+            assert!(
+                !defaults.bindings_for(*intent).is_empty(),
+                "{intent:?} has no default key"
+            );
+        }
     }
 
     #[test]

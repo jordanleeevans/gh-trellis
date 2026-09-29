@@ -17,7 +17,7 @@ Set `TRELLIS_CONFIG=/path/to/file.toml` to override.
 
 ```toml
 refresh_interval_secs = 0   # seconds between background refreshes; 0 = manual only
-default_remote = "origin"   # remote used by submit
+default_remote = "origin"   # remote used by submit, sync and rebase
 nerd_fonts = true           # false switches to ASCII glyphs
 theme = "pastel"            # only built-in theme today
 
@@ -46,8 +46,15 @@ Actions: `move_down`, `move_up`, `focus_next`, `focus_previous`, `drill_in`,
 `submit`, `toggle_submit_auto`, `toggle_submit_open`, `sync` (default `S`),
 `toggle_sync_prune` (default `P`), `merge` (default `M`; merges the
 checked-out stack after a typed confirmation), `cycle_merge_method` (default
-`m`; merge, squash or rebase), `help`, `page_down`,
+`m`; merge, squash or rebase), `rebase_stack` (default `R`),
+`rebase_upstack` (default `u`), `help`, `page_down`,
 `page_up`, `half_page_down`, `half_page_up`, `end`, `open_external`,
+`dismiss_message`.
+
+In the rebase conflict view: `conflict_edit` (default `e`, opens the file in
+`$EDITOR`, else `vi`), `conflict_mark_resolved` (default `+`),
+`rebase_continue` (default `C`) and `rebase_abort` (default `A`). The view
+also uses `move_down`, `move_up`, `refresh`, `help`, `back` and
 `dismiss_message`.
 
 Key strings: a single character (`q`, `?`, `G`), a named key (`enter`, `esc`,

@@ -2,7 +2,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::stack::UnstackScope;
+use crate::stack::{RebaseScope, UnstackScope};
 use crate::tui::action::Action;
 use crate::tui::components::add_layer_prompt::{AddLayerPrompt, PromptOutcome};
 use crate::tui::keymap::{KeyIntent, key_intent};
@@ -159,6 +159,22 @@ impl StackBrowser {
                 .map(|stack_index| vec![Action::MergeStack { stack_index }])
                 .unwrap_or_default(),
             Some(KeyIntent::CycleMergeMethod) => vec![Action::CycleMergeMethod],
+            Some(KeyIntent::RebaseStack) => selected_stack
+                .map(|stack_index| {
+                    vec![Action::RebaseStack {
+                        stack_index,
+                        scope: RebaseScope::Stack,
+                    }]
+                })
+                .unwrap_or_default(),
+            Some(KeyIntent::RebaseUpstack) => selected_stack
+                .map(|stack_index| {
+                    vec![Action::RebaseStack {
+                        stack_index,
+                        scope: RebaseScope::Upstack,
+                    }]
+                })
+                .unwrap_or_default(),
             Some(KeyIntent::DrillIn) => match self.active_panel {
                 ActivePanel::Stacks => vec![Action::FocusNextPanel],
                 ActivePanel::Layers => vec![Action::FocusNextPanel],
@@ -241,6 +257,31 @@ mod tests {
                     force: true,
                 }
             ]
+        ));
+    }
+
+    #[test]
+    fn rebase_keys_target_the_selected_stack_with_their_scope() {
+        let mut component = StackBrowser::new();
+        let mut state = app_state(vec![stack_summary("a", 2)], Screen::Layers(0));
+        component.update(&Action::ShowLayers(0), &mut state);
+
+        let stack = component.handle_key(key(KeyCode::Char('R')), &state);
+        let upstack = component.handle_key(key(KeyCode::Char('u')), &state);
+
+        assert!(matches!(
+            stack.as_slice(),
+            [Action::RebaseStack {
+                stack_index: 0,
+                scope: RebaseScope::Stack
+            }]
+        ));
+        assert!(matches!(
+            upstack.as_slice(),
+            [Action::RebaseStack {
+                stack_index: 0,
+                scope: RebaseScope::Upstack
+            }]
         ));
     }
 

@@ -43,6 +43,23 @@ impl App {
         actions
     }
 
+    /// Like [`App::settle`], but runs the effects for real, with
+    /// `ProcessShell`, in `repo` (a throwaway fixture repository).
+    pub(super) async fn settle_in(
+        &mut self,
+        action: &Action,
+        repo: &std::path::Path,
+    ) -> Vec<Action> {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let effects = Effects::new(repo.to_path_buf(), Arc::new(crate::shell::ProcessShell), tx);
+        let mut actions = self.apply_action(action, &effects);
+        effects.wait_idle().await;
+        while let Ok(action) = rx.try_recv() {
+            actions.push(action);
+        }
+        actions
+    }
+
     /// Dispatches `actions` and their follow-ups, without running effects.
     pub(super) fn dispatch_now(&mut self, actions: Vec<Action>) {
         let (effects, _rx) = test_effects(&MockShell::new());

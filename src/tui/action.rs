@@ -6,10 +6,12 @@
 //! tasks whose results come back as further `Action`s.
 
 use crate::stack::{
-    LayerDetail, MergeMethod, MergeOutcome, StackSummary, SyncOutcome, UnstackScope,
+    LayerDetail, MergeMethod, MergeOutcome, RebaseConflict, RebaseOutcome, RebaseScope,
+    StackSummary, StageOutcome, SyncOutcome, UnstackScope,
 };
 
 use super::components::confirm::ConfirmModal;
+use super::state::external_command::ExternalCommand;
 use super::state::submit_progress::LayerSubmitStatus;
 
 #[derive(Debug, Clone)]
@@ -149,5 +151,58 @@ pub enum Action {
     MergeFinished {
         /// The error is already user-facing (see `tui::messages`).
         result: Result<MergeOutcome, String>,
+    },
+    /// User intent: rebase the stack at `stack_index`, which must be
+    /// checked out. Shows a confirm modal whose confirmation dispatches
+    /// [`Action::RebaseStarted`].
+    RebaseStack {
+        stack_index: usize,
+        scope: RebaseScope,
+    },
+    /// Rebase was confirmed: starts `gh stack rebase` in the background.
+    RebaseStarted {
+        stack_index: usize,
+        scope: RebaseScope,
+    },
+    /// A rebase or `--continue` ended. Stopping on a conflict is an `Ok`
+    /// outcome; the error is already user-facing.
+    RebaseFinished {
+        result: Result<RebaseOutcome, String>,
+    },
+    /// Asks git whether a rebase is stopped: on startup, on refresh, and
+    /// after anything that may have changed the conflicted files.
+    LoadRebaseState,
+    RebaseStateLoaded {
+        result: Result<Option<RebaseConflict>, String>,
+    },
+    /// Opens a conflicted file in `$EDITOR`, suspending the TUI.
+    EditConflictFile {
+        path: String,
+    },
+    /// Marks a conflicted file resolved (`git add`).
+    StageConflictFile {
+        path: String,
+    },
+    ConflictFileStaged {
+        path: String,
+        result: Result<StageOutcome, String>,
+    },
+    /// Continues the interrupted rebase once every file is resolved.
+    ContinueRebase,
+    /// User intent: abort the interrupted rebase. Shows a confirm modal
+    /// whose confirmation dispatches [`Action::RunAbortRebase`].
+    AbortRebase,
+    RunAbortRebase,
+    RebaseAborted {
+        result: Result<(), String>,
+    },
+    /// Hands the terminal to another program; see [`ExternalCommand`].
+    RunExternal(ExternalCommand),
+    /// Sent by the event loop once an external command has exited and the
+    /// TUI is back. The error is already user-facing; `then` is dispatched
+    /// either way.
+    ExternalCommandFinished {
+        result: Result<(), String>,
+        then: Box<Action>,
     },
 }
