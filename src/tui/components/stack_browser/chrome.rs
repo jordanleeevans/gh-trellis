@@ -15,50 +15,80 @@ use crate::tui::widgets::{glyphs, spinner_frame};
 use crate::tui::keymap::{self, KeyIntent, Keymap};
 
 use super::ActivePanel;
+use super::layout::BrowserLayout;
 use super::navigator::stack_name;
 
 pub(super) fn render_header(
     frame: &mut Frame,
-    area: Rect,
+    layout: &BrowserLayout,
     state: &AppState,
     selected_stack: Option<usize>,
     selected_layer: Option<&Layer>,
 ) {
+    let area = layout.header;
+    let mut title = vec![Span::styled(
+        " Trellis ",
+        Style::default()
+            .fg(THEME.colors.text_inverse)
+            .bg(THEME.colors.primary),
+    )];
+    if !layout.compact_header {
+        title.push(Span::styled(
+            " stacks",
+            THEME.text.heading.fg(THEME.colors.secondary),
+        ));
+    }
+    // In single-column mode, say which of the two views is showing.
+    if let Some(label) = layout.view_label() {
+        title.push(Span::styled(format!(" [{label}] "), THEME.text.muted));
+    }
+
+    let summary_style = Style::default()
+        .fg(THEME.colors.secondary)
+        .add_modifier(Modifier::BOLD);
+
+    if layout.compact_header {
+        // One row, no border: the title and the selection share the line.
+        let used = u16::try_from(spans_width(&title) + 1).unwrap_or(u16::MAX);
+        let remaining = Rect {
+            width: area.width.saturating_sub(used),
+            ..area
+        };
+        let summary = match selected_layer {
+            Some(layer) => {
+                header_summary_line(remaining, layer.branch.clone(), layer_status_text(layer), 0)
+            }
+            None => Line::from(Span::raw(selection_text(state, selected_stack))),
+        };
+        let mut spans = title;
+        spans.push(Span::raw(" "));
+        spans.extend(summary.spans);
+        frame.render_widget(Paragraph::new(Line::from(spans)).style(summary_style), area);
+        return;
+    }
+
     let header = Block::default()
-        .title(Line::from(vec![
-            Span::styled(
-                " Trellis ",
-                Style::default()
-                    .fg(THEME.colors.text_inverse)
-                    .bg(THEME.colors.primary),
-            ),
-            Span::styled(" stacks", THEME.text.heading.fg(THEME.colors.secondary)),
-        ]))
+        .title(Line::from(title))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(THEME.primary_border());
 
-    let content = if let Some(layer) = selected_layer {
-        header_summary_line(area, layer.branch.clone(), layer_status_text(layer))
-    } else {
-        Line::from(Span::raw(
-            selected_stack
-                .and_then(|index| state.stacks.get(index))
-                .map(|stack| format!("{} (trunk: {})", stack_name(stack), stack.trunk))
-                .unwrap_or_else(|| "Browse locally tracked stacks and layer status".to_string()),
-        ))
+    let content = match selected_layer {
+        Some(layer) => header_summary_line(area, layer.branch.clone(), layer_status_text(layer), 4),
+        None => Line::from(Span::raw(selection_text(state, selected_stack))),
     };
 
     frame.render_widget(
-        Paragraph::new(content)
-            .style(
-                Style::default()
-                    .fg(THEME.colors.secondary)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .block(header),
+        Paragraph::new(content).style(summary_style).block(header),
         area,
     );
+}
+
+fn selection_text(state: &AppState, selected_stack: Option<usize>) -> String {
+    selected_stack
+        .and_then(|index| state.stacks.get(index))
+        .map(|stack| format!("{} (trunk: {})", stack_name(stack), stack.trunk))
+        .unwrap_or_else(|| "Browse locally tracked stacks and layer status".to_string())
 }
 
 pub(super) fn render_footer(frame: &mut Frame, area: Rect, state: &AppState, panel: ActivePanel) {
@@ -218,8 +248,9 @@ pub(super) fn header_summary_line(
     area: Rect,
     left: String,
     right: (String, Style),
+    margin: u16,
 ) -> Line<'static> {
-    let width = area.width.saturating_sub(4) as usize;
+    let width = area.width.saturating_sub(margin) as usize;
     let right_len = right.0.chars().count();
     let left_len = left.chars().count();
     let spacer_len = width.saturating_sub(left_len + right_len).max(1);

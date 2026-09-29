@@ -12,7 +12,7 @@ use ratatui::widgets::{Clear, Paragraph};
 use crate::theme::ui::THEME;
 use crate::tui::keymap::{KeyIntent, Keymap};
 use crate::tui::state::AppState;
-use crate::tui::widgets::{centered_rect, panel_block};
+use crate::tui::widgets::{centered_rect_min, panel_block};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HelpSection {
@@ -148,7 +148,7 @@ pub(crate) fn render(
     state: &AppState,
     scroll: u16,
 ) -> u16 {
-    let popup = centered_rect(area, 90, 90);
+    let popup = centered_rect_min(area, 90, 90, 40, 10);
     frame.render_widget(Clear, popup);
 
     let close = keymap.short_label(KeyIntent::Help).unwrap_or_default();

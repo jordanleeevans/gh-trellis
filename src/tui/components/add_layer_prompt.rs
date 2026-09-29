@@ -8,7 +8,7 @@ use ratatui::widgets::{Clear, Paragraph, Wrap};
 
 use crate::theme::ui::THEME;
 use crate::tui::action::Action;
-use crate::tui::widgets::{centered_rect, panel_block};
+use crate::tui::widgets::{centered_rect_min, panel_block};
 
 /// Which field of the "add layer" prompt is currently being typed into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,7 +98,7 @@ impl AddLayerPrompt {
 
 /// Renders the prompt as a small bordered overlay centered over `area`.
 pub(crate) fn render(frame: &mut Frame, area: Rect, prompt: &AddLayerPrompt) {
-    let popup_area = centered_rect(area, 60, 8);
+    let popup_area = centered_rect_min(area, 60, 8, 44, 8);
     frame.render_widget(Clear, popup_area);
 
     let (label, value, hint) = match prompt.field {
