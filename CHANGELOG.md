@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.1.0] - 2026-09-29
 
 ### Bug Fixes
 
@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add rebase action with in-TUI conflict resolution (#17, #23)
 - Restructure a stack via gh stack modify ([#20](https://github.com/jordanleeevans/gh-trellis/issues/20))
 - Actionable first-run dependency report ([#38](https://github.com/jordanleeevans/gh-trellis/issues/38))
+- Package as the gh-trellis GitHub CLI extension ([#41](https://github.com/jordanleeevans/gh-trellis/issues/41))
 
 ### Miscellaneous Tasks
 
