@@ -16,7 +16,7 @@ Set `TRELLIS_CONFIG=/path/to/file.toml` to override.
 ## Example
 
 ```toml
-refresh_interval_secs = 0   # 0 = manual refresh only (parsed; automatic refresh not wired yet)
+refresh_interval_secs = 0   # seconds between background refreshes; 0 = manual only
 default_remote = "origin"   # remote used by submit
 nerd_fonts = true           # false switches to ASCII glyphs
 theme = "pastel"            # only built-in theme today

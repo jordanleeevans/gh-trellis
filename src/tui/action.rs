@@ -129,5 +129,4 @@ pub enum Action {
         /// The error is already user-facing (see `friendly_shell_error`).
         result: Result<SyncOutcome, String>,
     },
-    DismissSyncNotice,
 }

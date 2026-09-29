@@ -21,6 +21,8 @@ pub enum Screen {
 pub struct AppState {
     pub stacks: Vec<StackSummary>,
     pub screen: Screen,
+    /// A one-line informational message for the footer (not an error).
+    /// Cleared by the next key press.
     pub status: Option<String>,
     pub error: Option<String>,
     pub refresh_in_flight: bool,
@@ -40,9 +42,6 @@ pub struct AppState {
     pub sync_options: SyncOptions,
     /// A `gh stack sync` is running in the background.
     pub sync_in_flight: bool,
-    /// Outcome of the last successful sync, shown in the footer until
-    /// dismissed. (`status` is never rendered, so it can't carry this.)
-    pub sync_notice: Option<String>,
     pub should_quit: bool,
 }
 
@@ -65,7 +64,6 @@ impl Default for AppState {
             submit_options: SubmitOptions::default(),
             sync_options: SyncOptions::default(),
             sync_in_flight: false,
-            sync_notice: None,
             should_quit: false,
         }
     }

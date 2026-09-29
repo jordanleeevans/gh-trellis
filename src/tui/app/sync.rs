@@ -48,7 +48,6 @@ impl App {
                     )];
                 }
                 self.state.sync_in_flight = true;
-                self.state.sync_notice = None;
                 effects.sync_stack(
                     crate::config::get().default_remote.clone(),
                     self.state.sync_options,
@@ -74,7 +73,7 @@ impl App {
                         Action::RefreshStacks,
                     ],
                     Ok(outcome) => {
-                        self.state.sync_notice = Some(
+                        self.state.status = Some(
                             match outcome {
                                 SyncOutcome::Synced => "stack synced",
                                 SyncOutcome::BranchesSynced => {
@@ -90,10 +89,6 @@ impl App {
             }
             Action::ToggleSyncPrune => {
                 self.state.sync_options.prune = !self.state.sync_options.prune;
-                Vec::new()
-            }
-            Action::DismissSyncNotice => {
-                self.state.sync_notice = None;
                 Vec::new()
             }
             _ => unreachable!("routed to reduce_sync by App::apply_action"),
@@ -200,7 +195,7 @@ mod tests {
 
         let follow_ups = app.apply(&results[0]);
         assert!(!app.state.sync_in_flight);
-        assert_eq!(app.state.sync_notice.as_deref(), Some("stack synced"));
+        assert_eq!(app.state.status.as_deref(), Some("stack synced"));
         assert!(matches!(follow_ups.as_slice(), [Action::RefreshStacks]));
     }
 
@@ -269,7 +264,7 @@ mod tests {
             });
 
             assert!(!app.state.sync_in_flight);
-            assert!(app.state.sync_notice.is_none());
+            assert!(app.state.status.is_none());
             assert!(matches!(
                 follow_ups.as_slice(),
                 [Action::SetError(_), Action::RefreshStacks]

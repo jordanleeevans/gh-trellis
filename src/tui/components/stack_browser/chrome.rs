@@ -183,13 +183,11 @@ pub(super) fn footer_line(
             Span::raw(message),
         ]);
     }
-    if let Some(notice) = &state.sync_notice {
-        let mut spans = vec![
-            Span::styled("sync: ", THEME.text.key.fg(THEME.colors.success)),
-            Span::raw(notice.clone()),
-        ];
-        spans.extend(dismiss());
-        return Line::from(spans);
+    if let Some(status) = &state.status {
+        return Line::from(vec![
+            Span::styled("» ", THEME.text.key.fg(THEME.colors.secondary)),
+            Span::raw(status.clone()),
+        ]);
     }
 
     let trailing: Vec<Span> = TRAILING_HINTS
@@ -346,6 +344,16 @@ mod tests {
         let line = footer(&state, ActivePanel::Stacks, 120);
         assert!(line.contains("error: auth required"));
         assert!(line.contains("x dismiss"));
+    }
+
+    #[test]
+    fn footer_shows_the_status_message() {
+        let mut state = app_state(vec![stack_summary("a", 1)], Screen::Layers(0));
+        state.status = Some("selected layer has no pull request".to_string());
+        assert!(
+            footer(&state, ActivePanel::Layers, 120)
+                .contains("» selected layer has no pull request")
+        );
     }
 
     #[test]
