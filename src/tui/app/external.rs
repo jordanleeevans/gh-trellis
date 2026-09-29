@@ -28,8 +28,9 @@ use std::path::Path;
 use std::process::Stdio;
 
 use crossterm::execute;
-use crossterm::terminal::{EnterAlternateScreen, enable_raw_mode};
-use ratatui::DefaultTerminal;
+use crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, enable_raw_mode};
+use ratatui::backend::CrosstermBackend;
+use ratatui::{DefaultTerminal, Terminal};
 
 use crate::tui::action::Action;
 use crate::tui::state::external_command::ExternalCommand;
@@ -72,8 +73,14 @@ pub(super) async fn suspend_and_run(
     let result = run_inherited(command, cwd).await;
 
     enable_raw_mode()?;
-    execute!(io::stdout(), EnterAlternateScreen)?;
-    terminal.clear()?;
+    execute!(io::stdout(), EnterAlternateScreen, Clear(ClearType::All))?;
+    // Not `terminal.clear()`: it first asks the terminal for the cursor
+    // position, which can time out right after another program has used the
+    // terminal (slow SSH/tmux, or keys typed into the editor still queued),
+    // and that error would end the app mid-rebase. A fresh full-screen
+    // terminal makes no such query and starts with empty buffers, so the
+    // next draw repaints every cell.
+    *terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     Ok(result)
 }
 
