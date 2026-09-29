@@ -118,6 +118,10 @@ pub(crate) fn sections(keymap: &Keymap, state: &AppState) -> Vec<HelpSection> {
                         keymap.all_labels(RebaseUpstack)
                     ),
                 ),
+                row(
+                    ModifyStack,
+                    "restructure stack (gh stack modify)".to_string(),
+                ),
                 row(Unstack, "unstack (local only)".to_string()),
                 row(UnstackRemote, "unstack on GitHub".to_string()),
             ],

@@ -37,6 +37,7 @@ src/
       stack_ops.rs   checkout, add layer, open PR, unstack
       submit.rs      submit + progress       sync.rs      gh stack sync
       merge.rs       gh stack merge (danger confirm, re-check, outcome)
+      modify.rs      gh stack modify (confirm, hand off the terminal, refresh)
       rebase.rs      gh stack rebase, conflict detection, edit/stage/continue/abort
       external.rs    handing the terminal to $EDITOR and other interactive commands
       auto_refresh.rs  periodic refresh (refresh_interval_secs)

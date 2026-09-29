@@ -47,7 +47,8 @@ Actions: `move_down`, `move_up`, `focus_next`, `focus_previous`, `drill_in`,
 `toggle_sync_prune` (default `P`), `merge` (default `M`; merges the
 checked-out stack after a typed confirmation), `cycle_merge_method` (default
 `m`; merge, squash or rebase), `rebase_stack` (default `R`),
-`rebase_upstack` (default `u`), `help`, `page_down`,
+`rebase_upstack` (default `u`), `modify_stack` (default `W`; hands the
+terminal to `gh stack modify` for the checked-out stack), `help`, `page_down`,
 `page_up`, `half_page_down`, `half_page_up`, `end`, `open_external`,
 `dismiss_message`.
 

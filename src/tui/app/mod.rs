@@ -19,6 +19,7 @@ mod external;
 mod feedback;
 mod layers;
 mod merge;
+mod modify;
 mod rebase;
 mod refresh;
 mod stack_ops;
@@ -188,6 +189,7 @@ impl App {
             | Action::AbortRebase
             | Action::RunAbortRebase
             | Action::RebaseAborted { .. } => self.reduce_rebase(action, effects),
+            Action::ModifyStack { .. } | Action::ModifyStarted { .. } => self.reduce_modify(action),
             Action::RunExternal(_) | Action::ExternalCommandFinished { .. } => {
                 self.reduce_external(action)
             }
