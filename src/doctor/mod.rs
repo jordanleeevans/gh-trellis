@@ -69,9 +69,12 @@ fn finding(
 
 /// Runs every doctor check and returns all the results. It never stops at
 /// the first failure, so the report can list everything that's wrong.
+/// Independent checks run concurrently: they each start a process, and
+/// `gh auth status` makes a network round trip.
 pub async fn diagnose(shell: &impl Shell, cwd: &Path) -> Diagnosis {
-    let git = finding(Tool::Git, Some(git::MINIMUM), git::check(shell, cwd).await);
-    let gh = finding(Tool::Gh, Some(gh::MINIMUM), gh::check(shell, cwd).await);
+    let (git, gh) = tokio::join!(git::check(shell, cwd), gh::check(shell, cwd));
+    let git = finding(Tool::Git, Some(git::MINIMUM), git);
+    let gh = finding(Tool::Gh, Some(gh::MINIMUM), gh);
 
     // Without `gh`, the auth and extension checks can only say "gh is
     // missing" again, so skip them and let the report show one clear fix.
@@ -87,13 +90,10 @@ pub async fn diagnose(shell: &impl Shell, cwd: &Path) -> Diagnosis {
             blocked(Tool::GhAuth, None),
         )
     } else {
+        let (stack, auth) = tokio::join!(gh_stack::check(shell, cwd), gh_auth::check(shell, cwd));
         (
-            finding(
-                Tool::GhStack,
-                Some(gh_stack::MINIMUM),
-                gh_stack::check(shell, cwd).await,
-            ),
-            finding(Tool::GhAuth, None, gh_auth::check(shell, cwd).await),
+            finding(Tool::GhStack, Some(gh_stack::MINIMUM), stack),
+            finding(Tool::GhAuth, None, auth),
         )
     };
 
