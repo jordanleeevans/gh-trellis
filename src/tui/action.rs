@@ -125,6 +125,15 @@ pub enum Action {
         stack_index: usize,
     },
     ToggleSyncPrune,
+    /// The user's intent to restructure a stack with `gh stack modify`;
+    /// shows the confirmation modal.
+    ModifyStack {
+        stack_index: usize,
+    },
+    /// Modify was confirmed: hands the terminal to `gh stack modify`.
+    ModifyStarted {
+        stack_index: usize,
+    },
     /// Sync was confirmed: starts `gh stack sync` in the background.
     SyncStarted {
         stack_index: usize,

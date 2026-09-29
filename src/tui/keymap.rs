@@ -26,6 +26,7 @@ pub(crate) enum KeyIntent {
     CycleMergeMethod,
     RebaseStack,
     RebaseUpstack,
+    ModifyStack,
     ConflictEdit,
     ConflictMarkResolved,
     RebaseContinue,
@@ -74,6 +75,7 @@ const INTENT_NAMES: &[(&str, KeyIntent)] = &[
     ("cycle_merge_method", KeyIntent::CycleMergeMethod),
     ("rebase_stack", KeyIntent::RebaseStack),
     ("rebase_upstack", KeyIntent::RebaseUpstack),
+    ("modify_stack", KeyIntent::ModifyStack),
     ("conflict_edit", KeyIntent::ConflictEdit),
     ("conflict_mark_resolved", KeyIntent::ConflictMarkResolved),
     ("rebase_continue", KeyIntent::RebaseContinue),
@@ -120,6 +122,7 @@ fn default_bindings() -> Vec<(KeyBinding, KeyIntent)> {
         (ch('m'), CycleMergeMethod),
         (ch('R'), RebaseStack),
         (ch('u'), RebaseUpstack),
+        (ch('W'), ModifyStack),
         (ch('e'), ConflictEdit),
         (ch('+'), ConflictMarkResolved),
         (ch('C'), RebaseContinue),
@@ -291,6 +294,10 @@ mod tests {
         assert_eq!(
             key_intent(key(KeyCode::Char('U'))),
             Some(KeyIntent::UnstackRemote)
+        );
+        assert_eq!(
+            key_intent(key(KeyCode::Char('W'))),
+            Some(KeyIntent::ModifyStack)
         );
         assert_eq!(key_intent(key(KeyCode::Char('G'))), Some(KeyIntent::End));
         assert_eq!(key_intent(key(KeyCode::Char('?'))), Some(KeyIntent::Help));

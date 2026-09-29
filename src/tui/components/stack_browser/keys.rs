@@ -159,6 +159,9 @@ impl StackBrowser {
                 .map(|stack_index| vec![Action::MergeStack { stack_index }])
                 .unwrap_or_default(),
             Some(KeyIntent::CycleMergeMethod) => vec![Action::CycleMergeMethod],
+            Some(KeyIntent::ModifyStack) => selected_stack
+                .map(|stack_index| vec![Action::ModifyStack { stack_index }])
+                .unwrap_or_default(),
             Some(KeyIntent::RebaseStack) => selected_stack
                 .map(|stack_index| {
                     vec![Action::RebaseStack {
