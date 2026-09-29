@@ -5,7 +5,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use ratatui::DefaultTerminal;
@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 
 use crate::shell::Shell;
 
+mod auto_refresh;
 mod feedback;
 mod layers;
 mod refresh;
@@ -30,6 +31,7 @@ use super::components::stack_browser::StackBrowser;
 use super::effects::Effects;
 use super::keymap::{KeyIntent, key_intent};
 use super::state::{AppState, Screen};
+use auto_refresh::AutoRefresh;
 
 struct App {
     state: AppState,
@@ -62,18 +64,22 @@ impl App {
             return confirm::handle_confirm_key(modal, key);
         }
 
-        let mut actions: Vec<Action> = self
-            .stack_browser
-            .handle_key(key, &self.state)
-            .into_iter()
-            .map(wrap_quit_in_confirmation)
-            .collect();
+        // A status message lasts until the next key press. Clear it first,
+        // so a status set by this key's own actions survives.
+        let mut actions = Vec::new();
+        if self.state.status.is_some() {
+            actions.push(Action::ClearStatus);
+        }
+
+        actions.extend(
+            self.stack_browser
+                .handle_key(key, &self.state)
+                .into_iter()
+                .map(wrap_quit_in_confirmation),
+        );
 
         if self.state.error.is_some() && key_intent(key) == Some(KeyIntent::DismissMessage) {
             actions.push(Action::ClearError);
-        }
-        if self.state.sync_notice.is_some() && key_intent(key) == Some(KeyIntent::DismissMessage) {
-            actions.push(Action::DismissSyncNotice);
         }
 
         actions
@@ -147,8 +153,7 @@ impl App {
             Action::SyncStack { .. }
             | Action::SyncStarted { .. }
             | Action::SyncFinished { .. }
-            | Action::ToggleSyncPrune
-            | Action::DismissSyncNotice => self.reduce_sync(action, effects),
+            | Action::ToggleSyncPrune => self.reduce_sync(action, effects),
             // View-only actions: handled by the components' `update`.
             Action::SelectNext
             | Action::SelectPrevious
@@ -208,6 +213,8 @@ async fn run_app(
     let mut app = App::new();
     let (tx, mut rx) = mpsc::unbounded_channel();
     let effects = Effects::new(repo.to_path_buf(), shell, tx);
+    let mut auto_refresh =
+        AutoRefresh::new(crate::config::get().refresh_interval_secs, Instant::now());
     app.dispatch(vec![Action::RefreshStacks], &effects);
 
     while !app.state.should_quit {
@@ -216,6 +223,9 @@ async fn run_app(
         }
 
         app.dispatch(vec![Action::Tick], &effects);
+        if auto_refresh.due(Instant::now(), &app.state) {
+            app.dispatch(vec![Action::RefreshStacks], &effects);
+        }
 
         terminal.draw(|frame| app.draw(frame))?;
 

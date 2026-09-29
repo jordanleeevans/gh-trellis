@@ -156,6 +156,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn any_key_clears_the_status_message() {
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+        app.state.status = Some("stack synced".to_string());
+
+        let actions = app.handle_key(key(KeyCode::Char('j')));
+        app.dispatch_now(actions);
+
+        assert!(app.state.status.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_status_set_by_the_same_key_press_survives() {
+        let mut app = App::new();
+        app.state.stacks = vec![stack_summary("stack-a", 1)];
+        app.state.status = Some("old message".to_string());
+
+        // The layer has no pull request, so `o` sets a new status.
+        app.dispatch_now(vec![Action::ShowLayers(0)]);
+        let actions = app.handle_key(key(KeyCode::Char('o')));
+        app.dispatch_now(actions);
+
+        assert_eq!(
+            app.state.status.as_deref(),
+            Some("selected layer has no pull request")
+        );
+    }
+
+    #[tokio::test]
     async fn danger_modal_esc_cancels_without_firing_action() {
         let mut app = App::new();
         app.state.status = Some("untouched".to_string());

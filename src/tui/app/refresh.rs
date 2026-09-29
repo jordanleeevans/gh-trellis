@@ -88,7 +88,7 @@ impl App {
             None => Screen::List,
         };
 
-        vec![Action::StacksLoaded(selected_index), Action::ClearStatus]
+        vec![Action::StacksLoaded(selected_index)]
     }
 }
 
@@ -156,6 +156,20 @@ mod tests {
 
         assert!(!app.state.refresh_in_flight);
         assert!(app.state.error.is_some());
+    }
+
+    #[test]
+    fn a_background_refresh_does_not_wipe_the_status_message() {
+        let mut app = App::new();
+        app.state.status = Some("stack synced".to_string());
+        app.state.refresh_active_request_id = Some(1);
+
+        app.dispatch_now(vec![Action::StackRefreshSucceeded {
+            request_id: 1,
+            result: Ok(vec![stack_summary("stack-a", 1)]),
+        }]);
+
+        assert_eq!(app.state.status.as_deref(), Some("stack synced"));
     }
 
     #[tokio::test]
