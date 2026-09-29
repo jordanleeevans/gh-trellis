@@ -1,26 +1,3 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Glyph {
-    Branch,
-    Current,
-    Commit,
-    PullRequest,
-    PullRequestOpen,
-    PullRequestMerged,
-    PullRequestClosed,
-    Check,
-    Cross,
-    Warning,
-    Pending,
-    Running,
-    GitHub,
-    OpenExternal,
-    Folder,
-    FolderOpen,
-    File,
-    Up,
-    Down,
-}
-
 pub const NERD_FONT: GlyphSet = GlyphSet {
     branch: "",
     current: "●",
@@ -74,6 +51,11 @@ pub const ASCII: GlyphSet = GlyphSet {
 };
 
 #[derive(Debug, Clone, Copy)]
+#[expect(
+    dead_code,
+    reason = "a complete icon set, kept in step across the Nerd Font and ASCII \
+              variants; some icons are for panels not built yet (#24-#29)"
+)]
 pub struct GlyphSet {
     pub branch: &'static str,
     pub current: &'static str,
@@ -98,32 +80,6 @@ pub struct GlyphSet {
 
     pub up: &'static str,
     pub down: &'static str,
-}
-
-impl GlyphSet {
-    pub fn get(&self, glyph: Glyph) -> &'static str {
-        match glyph {
-            Glyph::Branch => self.branch,
-            Glyph::Current => self.current,
-            Glyph::Commit => self.commit,
-            Glyph::PullRequest => self.pull_request,
-            Glyph::PullRequestOpen => self.pull_request_open,
-            Glyph::PullRequestMerged => self.pull_request_merged,
-            Glyph::PullRequestClosed => self.pull_request_closed,
-            Glyph::Check => self.check,
-            Glyph::Cross => self.cross,
-            Glyph::Warning => self.warning,
-            Glyph::Pending => self.pending,
-            Glyph::Running => self.running,
-            Glyph::GitHub => self.github,
-            Glyph::OpenExternal => self.open_external,
-            Glyph::Folder => self.folder,
-            Glyph::FolderOpen => self.folder_open,
-            Glyph::File => self.file,
-            Glyph::Up => self.up,
-            Glyph::Down => self.down,
-        }
-    }
 }
 
 static NERD_FONTS_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);

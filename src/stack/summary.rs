@@ -18,36 +18,6 @@ pub enum StackSummaryError {
     Shell(#[from] ShellError),
 }
 
-/// Counts of pull request states across a stack's layers.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct PrCounts {
-    pub open: usize,
-    pub draft: usize,
-    pub merged: usize,
-    pub closed: usize,
-    /// Layers with no linked pull request yet (not pushed/submitted).
-    pub unsubmitted: usize,
-}
-
-impl PrCounts {
-    fn record(&mut self, layer: &Layer) {
-        let Some(pr) = &layer.pull_request else {
-            self.unsubmitted += 1;
-            return;
-        };
-
-        if pr.is_draft == Some(true) {
-            self.draft += 1;
-        } else {
-            match pr.state.as_str() {
-                "MERGED" => self.merged += 1,
-                "CLOSED" => self.closed += 1,
-                _ => self.open += 1,
-            }
-        }
-    }
-}
-
 /// A locally tracked stack, summarized for display in the entry-point panel.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StackSummary {
@@ -58,20 +28,6 @@ pub struct StackSummary {
     pub layers: Vec<Layer>,
     /// Whether the currently checked-out branch belongs to this stack.
     pub is_current: bool,
-}
-
-impl StackSummary {
-    pub fn layer_count(&self) -> usize {
-        self.layers.len()
-    }
-
-    pub fn pr_counts(&self) -> PrCounts {
-        let mut counts = PrCounts::default();
-        for layer in &self.layers {
-            counts.record(layer);
-        }
-        counts
-    }
 }
 
 /// Enumerates every stack tracked locally in `repo`, hydrating each layer's
@@ -233,14 +189,14 @@ mod tests {
         let summary = &summaries[0];
         assert_eq!(summary.label, "layer-1 → layer-2");
         assert_eq!(summary.trunk, "main");
-        assert_eq!(summary.layer_count(), 2);
+        assert_eq!(summary.layers.len(), 2);
         assert!(summary.is_current);
         assert!(!summary.layers[0].is_current);
         assert!(summary.layers[1].is_current);
 
-        let counts = summary.pr_counts();
-        assert_eq!(counts.open, 1);
-        assert_eq!(counts.unsubmitted, 1);
+        // layer-1's pull request was hydrated; layer-2 has none yet.
+        assert_eq!(summary.layers[0].pull_request.as_ref().unwrap().number, 1);
+        assert!(summary.layers[1].pull_request.is_none());
     }
 
     #[tokio::test]

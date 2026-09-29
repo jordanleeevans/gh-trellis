@@ -8,6 +8,7 @@ use crate::shell::{Shell, ShellError};
 const FIELD_SEPARATOR: char = '\u{1f}';
 
 /// Returns the one-line-per-commit `git log` output for the repository at `repo`.
+#[cfg_attr(not(test), expect(dead_code, reason = "for the log panel (#27)"))]
 pub async fn log(shell: &impl Shell, repo: &Path) -> Result<String, ShellError> {
     let output = shell.run(repo, "git", &["log", "--oneline"]).await?;
     Ok(output.stdout)
