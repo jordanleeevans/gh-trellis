@@ -16,12 +16,12 @@ use tokio::sync::mpsc;
 use crate::git;
 use crate::shell::Shell;
 use crate::stack::{
-    Layer, SubmitEvent, SubmitLayerOutcome, SubmitOptions, SyncOptions, UnstackScope,
-    hydrate_layer_detail, list_stacks, submit_stack, sync_stack, unstack_stack,
+    Layer, MergeMethod, SubmitEvent, SubmitLayerOutcome, SubmitOptions, SyncOptions, UnstackScope,
+    hydrate_layer_detail, list_stacks, merge_stack, submit_stack, sync_stack, unstack_stack,
 };
 
 use super::action::Action;
-use super::messages::friendly_shell_error;
+use super::messages::{friendly_shell_error, merge_failure_message};
 use super::state::submit_progress::LayerSubmitStatus;
 
 pub(crate) struct Effects {
@@ -183,6 +183,18 @@ impl Effects {
                 .await
                 .map_err(|error| friendly_shell_error("sync stack", &error));
             vec![Action::SyncFinished { result }]
+        });
+    }
+
+    /// Runs `gh stack merge --yes <method>` for the checked-out stack, then
+    /// sends [`Action::MergeFinished`]. Only called by the reducer for a
+    /// merge the user confirmed in the danger modal.
+    pub(crate) fn merge_stack(&self, method: MergeMethod) {
+        self.spawn(move |shell, repo, _| async move {
+            let result = merge_stack(&shell, &repo, method)
+                .await
+                .map_err(|failure| merge_failure_message(&failure));
+            vec![Action::MergeFinished { result }]
         });
     }
 

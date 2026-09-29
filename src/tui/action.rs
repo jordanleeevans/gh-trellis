@@ -5,7 +5,9 @@
 //! [`super::effects`] turns the ones that need a process into background
 //! tasks whose results come back as further `Action`s.
 
-use crate::stack::{LayerDetail, StackSummary, SyncOutcome, UnstackScope};
+use crate::stack::{
+    LayerDetail, MergeMethod, MergeOutcome, StackSummary, SyncOutcome, UnstackScope,
+};
 
 use super::components::confirm::ConfirmModal;
 use super::state::submit_progress::LayerSubmitStatus;
@@ -128,5 +130,24 @@ pub enum Action {
     SyncFinished {
         /// The error is already user-facing (see `friendly_shell_error`).
         result: Result<SyncOutcome, String>,
+    },
+    /// The user's intent to merge a stack; shows the danger confirmation
+    /// naming every PR that will merge, or refuses.
+    MergeStack {
+        stack_index: usize,
+    },
+    /// Cycles the merge method (merge, squash, rebase).
+    CycleMergeMethod,
+    /// The merge was confirmed for exactly `prs` (bottom to top) with
+    /// `method`. The reducer re-checks both against current state before
+    /// running `gh stack merge`.
+    MergeStarted {
+        stack_index: usize,
+        prs: Vec<u64>,
+        method: MergeMethod,
+    },
+    MergeFinished {
+        /// The error is already user-facing (see `tui::messages`).
+        result: Result<MergeOutcome, String>,
     },
 }
