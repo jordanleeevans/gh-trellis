@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::shell::Shell;
 
-use super::error::CheckFailure;
+use super::error::{CheckFailure, Tool};
 use super::requirement::VersionRequirement;
 use super::version::Version;
 
@@ -10,15 +10,14 @@ use super::version::Version;
 pub const MINIMUM: Version = Version::new(2, 90, 0);
 
 const REQUIREMENT: VersionRequirement = VersionRequirement {
-    name: "gh",
+    tool: Tool::Gh,
     program: "gh",
     args: &["--version"],
     minimum: MINIMUM,
-    install: "https://cli.github.com",
 };
 
 /// Checks that `gh` is installed and meets [`MINIMUM`].
-pub async fn check(shell: &impl Shell, cwd: &Path) -> Result<(), CheckFailure> {
+pub async fn check(shell: &impl Shell, cwd: &Path) -> Result<Option<Version>, CheckFailure> {
     REQUIREMENT.check(shell, cwd).await
 }
 

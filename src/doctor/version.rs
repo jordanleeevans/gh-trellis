@@ -39,7 +39,8 @@ impl Version {
     }
 
     fn parse_token(token: &str) -> Option<Self> {
-        let mut parts = token.split('.');
+        // Extensions list tags like `v0.5.0`.
+        let mut parts = token.strip_prefix('v').unwrap_or(token).split('.');
 
         let major = parts.next()?.parse().ok()?;
         let minor = parts.next()?.parse().ok()?;
@@ -65,6 +66,13 @@ mod tests {
         let version = Version::parse("gh version 2.40.1 (2023-12-13)").unwrap();
 
         assert_eq!(version, Version::new(2, 40, 1));
+    }
+
+    #[test]
+    fn parses_v_prefixed_tags() {
+        let version = Version::parse("gh stack\tgithub/gh-stack\tv0.5.0").unwrap();
+
+        assert_eq!(version, Version::new(0, 5, 0));
     }
 
     #[test]
