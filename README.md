@@ -132,6 +132,7 @@ Bindings can be changed in the config file; see [docs/config.md](docs/config.md)
 | `u` | Rebase from the checked-out layer up |
 | `D` | Unstack, local tracking only |
 | `U` | Unstack on GitHub |
+| `W` | Restructure the stack in `gh stack modify` (drop, fold, reorder, rename; asks to confirm) |
 
 ### Layer
 
@@ -176,8 +177,8 @@ and `r` to reload the list, plus:
 
 - **Type `yes` to confirm** (case-insensitive; Enter accepts, Esc cancels):
   merge (`M`) and unstack on GitHub (`U`).
-- **Enter to confirm, Esc to cancel**: quit, sync, rebase, abort rebase and
-  local unstack.
+- **Enter to confirm, Esc to cancel**: quit, sync, rebase, restructure
+  (`W`), abort rebase and local unstack.
 - **No confirmation**: submit (`s`), checkout (`c`) and add layer (`a`, which
   has its own prompt you can cancel with Esc).
 
